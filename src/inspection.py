@@ -19,6 +19,7 @@ def export_model_stages(
     warmup_seasons: list[str] | None = None,
     rolling_history: str = "same-season",
     use_prior_season_features: bool = False,
+    prior_decay_games: int = 30,
     use_elo: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
@@ -36,6 +37,7 @@ def export_model_stages(
         min_periods=min_periods,
         rolling_history=rolling_history,
         use_prior_season_features=use_prior_season_features,
+        prior_decay_games=prior_decay_games,
     )
     deltas = build_matchup_dataset(team_features, rolling_window=rolling_window, feature_set="deltas")
     full = build_matchup_dataset(team_features, rolling_window=rolling_window, feature_set="full")

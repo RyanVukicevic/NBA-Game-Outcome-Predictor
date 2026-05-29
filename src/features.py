@@ -22,6 +22,7 @@ def add_team_features(
     min_periods: int = 5,
     rolling_history: str = "same-season",
     use_prior_season_features: bool = False,
+    prior_decay_games: int = 30,
 ) -> pd.DataFrame:
     """
     Create team-level features before each game:
@@ -47,7 +48,7 @@ def add_team_features(
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
     if use_prior_season_features:
-        df = add_prior_season_features(df)
+        df = add_prior_season_features(df, prior_decay_games=prior_decay_games)
 
     group_columns = ["TEAM_ID", "SEASON_YEAR"] if rolling_history == "same-season" else ["TEAM_ID"]
 
@@ -66,7 +67,7 @@ def add_team_features(
     return df
 
 
-def add_prior_season_features(team_games: pd.DataFrame) -> pd.DataFrame:
+def add_prior_season_features(team_games: pd.DataFrame, prior_decay_games: int = 30) -> pd.DataFrame:
     if "SEASON_YEAR" not in team_games.columns:
         return team_games
 
@@ -83,17 +84,33 @@ def add_prior_season_features(team_games: pd.DataFrame) -> pd.DataFrame:
     ].shift(1)
     summaries = summaries.dropna(subset=["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"])
 
-    return team_games.merge(
+    df = team_games.merge(
         summaries,
         on=["TEAM_ID", "SEASON_YEAR"],
         how="left",
     )
+    df = df.sort_values(["TEAM_ID", "SEASON_YEAR", "GAME_DATE", "GAME_ID"]).reset_index(drop=True)
+    df["TEAM_GAMES_PLAYED_THIS_SEASON"] = df.groupby(["TEAM_ID", "SEASON_YEAR"]).cumcount()
+    if prior_decay_games <= 0:
+        df["PRIOR_SEASON_WEIGHT"] = 0.0
+    else:
+        df["PRIOR_SEASON_WEIGHT"] = (1 - df["TEAM_GAMES_PLAYED_THIS_SEASON"] / prior_decay_games).clip(lower=0)
+    for column in ["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]:
+        df[f"DECAYED_{column}"] = df[column] * df["PRIOR_SEASON_WEIGHT"]
+
+    return df
 
 
 def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.DataFrame:
     """Combine the two team rows for each NBA game into one home-vs-away row."""
     rolling_columns = [f"ROLLING_{rolling_window}_{column}" for column in BOX_SCORE_COLUMNS]
-    prior_columns = ["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]
+    prior_columns = [
+        "PRIOR_SEASON_WIN",
+        "PRIOR_SEASON_PLUS_MINUS",
+        "PRIOR_SEASON_WEIGHT",
+        "DECAYED_PRIOR_SEASON_WIN",
+        "DECAYED_PRIOR_SEASON_PLUS_MINUS",
+    ]
     rows: list[dict[str, float | str | pd.Timestamp]] = []
 
     for game_id, game in team_games.groupby("GAME_ID", sort=False):
@@ -121,6 +138,12 @@ def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.Dat
             "HOME_REST_DAYS": float(home_row["REST_DAYS"]),
             "AWAY_REST_DAYS": float(away_row["REST_DAYS"]),
         }
+        if "TEAM_GAMES_PLAYED_THIS_SEASON" in team_games.columns:
+            row["HOME_GAMES_PLAYED_THIS_SEASON"] = float(home_row["TEAM_GAMES_PLAYED_THIS_SEASON"])
+            row["AWAY_GAMES_PLAYED_THIS_SEASON"] = float(away_row["TEAM_GAMES_PLAYED_THIS_SEASON"])
+            row["DIFF_GAMES_PLAYED_THIS_SEASON"] = (
+                row["HOME_GAMES_PLAYED_THIS_SEASON"] - row["AWAY_GAMES_PLAYED_THIS_SEASON"]
+            )
 
         for column in rolling_columns:
             clean_name = column.lower()
@@ -252,6 +275,11 @@ def select_feature_names(
             "diff_elo_pre_x_diff_plus_minus",
             "diff_prior_season_win",
             "diff_prior_season_plus_minus",
+            "diff_decayed_prior_season_win",
+            "diff_decayed_prior_season_plus_minus",
+            "home_prior_season_weight",
+            "away_prior_season_weight",
+            "diff_prior_season_weight",
         }
         keep_suffixes = {
             "_plus_minus",

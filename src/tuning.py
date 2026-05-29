@@ -22,6 +22,7 @@ def result_row(
     warmup_seasons: list[str] | None = None,
     rolling_history: str = "same-season",
     use_prior_season_features: bool = False,
+    prior_decay_games: int = 30,
 ) -> dict[str, float | str | bool | None]:
     row = {
         "feature_set": feature_set,
@@ -30,6 +31,7 @@ def result_row(
         "warmup_seasons": ",".join(warmup_seasons or []),
         "rolling_history": rolling_history,
         "use_prior_season_features": use_prior_season_features,
+        "prior_decay_games": prior_decay_games,
         "use_elo": use_elo,
         "elo_k": elo_k if use_elo else None,
         "elo_playoff_k": elo_playoff_k if use_elo else None,
@@ -61,62 +63,69 @@ def tune_model_grid(
     warmup_seasons: list[str] | None = None,
     rolling_histories: list[str] | None = None,
     use_prior_season_features_values: list[bool] | None = None,
+    prior_decay_games_values: list[int] | None = None,
     elo_home_advantage: float = 65,
     cv_splits: int = 0,
+    cv_method: str = "timeseries",
     refresh: bool = False,
 ) -> pd.DataFrame:
     rows = []
     elo_carryover_values = elo_carryover_values or [0.75]
     rolling_histories = rolling_histories or ["same-season"]
     use_prior_season_features_values = use_prior_season_features_values or [False]
+    prior_decay_games_values = prior_decay_games_values or [30]
 
     for feature_set in feature_sets:
         for feature_mode in feature_modes:
             for rolling_history in rolling_histories:
                 for use_prior_season_features in use_prior_season_features_values:
-                    for rolling_window in rolling_windows:
-                        for min_periods in min_periods_values:
-                            if min_periods > rolling_window:
-                                continue
-                            for elo_k in elo_k_values:
-                                for elo_playoff_k in elo_playoff_k_values:
-                                    for elo_carryover in elo_carryover_values:
-                                        result = train_model(
-                                            seasons=seasons,
-                                            rolling_window=rolling_window,
-                                            min_periods=min_periods,
-                                            feature_set=feature_set,
-                                            feature_mode=feature_mode,
-                                            season_types=season_types,
-                                            warmup_seasons=warmup_seasons,
-                                            rolling_history=rolling_history,
-                                            use_prior_season_features=use_prior_season_features,
-                                            use_elo=True,
-                                            elo_k=elo_k,
-                                            elo_playoff_k=elo_playoff_k,
-                                            elo_home_advantage=elo_home_advantage,
-                                            elo_carryover=elo_carryover,
-                                            cv_splits=cv_splits,
-                                            refresh=refresh,
-                                        )
-                                        rows.append(
-                                            result_row(
-                                                result=result,
+                    for prior_decay_games in prior_decay_games_values:
+                        for rolling_window in rolling_windows:
+                            for min_periods in min_periods_values:
+                                if min_periods > rolling_window:
+                                    continue
+                                for elo_k in elo_k_values:
+                                    for elo_playoff_k in elo_playoff_k_values:
+                                        for elo_carryover in elo_carryover_values:
+                                            result = train_model(
+                                                seasons=seasons,
+                                                rolling_window=rolling_window,
+                                                min_periods=min_periods,
                                                 feature_set=feature_set,
                                                 feature_mode=feature_mode,
                                                 season_types=season_types,
                                                 warmup_seasons=warmup_seasons,
                                                 rolling_history=rolling_history,
                                                 use_prior_season_features=use_prior_season_features,
+                                                prior_decay_games=prior_decay_games,
                                                 use_elo=True,
                                                 elo_k=elo_k,
                                                 elo_playoff_k=elo_playoff_k,
                                                 elo_home_advantage=elo_home_advantage,
                                                 elo_carryover=elo_carryover,
-                                                rolling_window=rolling_window,
-                                                min_periods=min_periods,
+                                                cv_splits=cv_splits,
+                                                cv_method=cv_method,
+                                                refresh=refresh,
                                             )
-                                        )
+                                            rows.append(
+                                                result_row(
+                                                    result=result,
+                                                    feature_set=feature_set,
+                                                    feature_mode=feature_mode,
+                                                    season_types=season_types,
+                                                    warmup_seasons=warmup_seasons,
+                                                    rolling_history=rolling_history,
+                                                    use_prior_season_features=use_prior_season_features,
+                                                    prior_decay_games=prior_decay_games,
+                                                    use_elo=True,
+                                                    elo_k=elo_k,
+                                                    elo_playoff_k=elo_playoff_k,
+                                                    elo_home_advantage=elo_home_advantage,
+                                                    elo_carryover=elo_carryover,
+                                                    rolling_window=rolling_window,
+                                                    min_periods=min_periods,
+                                                )
+                                            )
 
     results = pd.DataFrame(rows)
     if not results.empty:
@@ -142,6 +151,7 @@ def tune_rolling_settings(
     elo_home_advantage: float = 65,
     elo_carryover: float = 0.75,
     cv_splits: int = 0,
+    cv_method: str = "timeseries",
     refresh: bool = False,
 ) -> pd.DataFrame:
     rows = []
@@ -164,6 +174,7 @@ def tune_rolling_settings(
                 elo_home_advantage=elo_home_advantage,
                 elo_carryover=elo_carryover,
                 cv_splits=cv_splits,
+                cv_method=cv_method,
                 refresh=refresh,
             )
 
@@ -201,6 +212,7 @@ def tune_elo_settings(
     feature_mode: str = "full",
     season_types: list[str] | None = None,
     cv_splits: int = 0,
+    cv_method: str = "timeseries",
     refresh: bool = False,
 ) -> pd.DataFrame:
     rows = []
@@ -221,6 +233,7 @@ def tune_elo_settings(
                     elo_home_advantage=elo_home_advantage,
                     elo_carryover=elo_carryover,
                     cv_splits=cv_splits,
+                    cv_method=cv_method,
                     refresh=refresh,
                 )
 

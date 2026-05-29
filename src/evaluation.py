@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 import pandas as pd
+import numpy as np
 from sklearn.base import clone
 from sklearn.calibration import calibration_curve
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss, roc_auc_score
@@ -50,6 +51,40 @@ def temporal_cv_scores(model, x: pd.DataFrame, y: pd.Series, splits: int = 5) ->
         metrics["fold"] = float(fold)
         metrics["train_games"] = float(len(x_train))
         metrics["test_games"] = float(len(x_test))
+        rows.append(metrics)
+
+    return pd.DataFrame(rows)
+
+
+def walk_forward_cv_scores(model, x: pd.DataFrame, y: pd.Series, dates: pd.Series, splits: int = 5) -> pd.DataFrame:
+    dates = pd.to_datetime(dates).reset_index(drop=True)
+    unique_dates = dates.drop_duplicates().sort_values().reset_index(drop=True)
+    if len(unique_dates) <= splits:
+        raise ValueError("Not enough unique dates for walk-forward CV.")
+
+    test_date_chunks = np.array_split(unique_dates, splits + 1)[1:]
+    rows = []
+
+    for fold, test_dates in enumerate(test_date_chunks, start=1):
+        test_start = test_dates.min()
+        test_end = test_dates.max()
+        train_mask = dates < test_start
+        test_mask = (dates >= test_start) & (dates <= test_end)
+        if not train_mask.any() or not test_mask.any():
+            continue
+
+        fold_model = clone(model)
+        x_train, x_test = x.loc[train_mask], x.loc[test_mask]
+        y_train, y_test = y.loc[train_mask], y.loc[test_mask]
+        fold_model.fit(x_train, y_train)
+
+        probabilities = fold_model.predict_proba(x_test)[:, 1]
+        metrics = evaluate_probabilities(y_test, probabilities)
+        metrics["fold"] = float(fold)
+        metrics["train_games"] = float(len(x_train))
+        metrics["test_games"] = float(len(x_test))
+        metrics["test_start"] = test_start
+        metrics["test_end"] = test_end
         rows.append(metrics)
 
     return pd.DataFrame(rows)

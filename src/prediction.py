@@ -34,7 +34,13 @@ def predict_matchup(result: TrainingResult, home: str, away: str, is_playoffs: b
         sample[f"away_{clean_name}"] = away_value
         sample[f"diff_{clean_name}"] = home_value - away_value
 
-    for column in ["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]:
+    for column in [
+        "PRIOR_SEASON_WIN",
+        "PRIOR_SEASON_PLUS_MINUS",
+        "PRIOR_SEASON_WEIGHT",
+        "DECAYED_PRIOR_SEASON_WIN",
+        "DECAYED_PRIOR_SEASON_PLUS_MINUS",
+    ]:
         if column in latest.columns:
             clean_name = column.lower()
             home_value = float(home_row[column]) if pd.notna(home_row[column]) else 0.0

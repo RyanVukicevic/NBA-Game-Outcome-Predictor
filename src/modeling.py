@@ -15,6 +15,7 @@ from config import season_type_slug
 from data import load_game_logs
 from elo import add_elo_features
 from evaluation import calibration_table, evaluate_probabilities, temporal_cv_scores
+from evaluation import walk_forward_cv_scores
 from features import (
     MatchupData,
     add_interaction_features,
@@ -36,6 +37,7 @@ class TrainingResult:
     feature_mode: str
     rolling_history: str
     use_prior_season_features: bool
+    prior_decay_games: int
     warmup_seasons: list[str]
     use_elo: bool
     season_types: list[str]
@@ -67,6 +69,7 @@ def cache_slug(
     warmup_seasons: list[str] | None = None,
     rolling_history: str = "same-season",
     use_prior_season_features: bool = False,
+    prior_decay_games: int = 30,
     use_elo: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
@@ -81,7 +84,7 @@ def cache_slug(
     if rolling_history != "same-season":
         slug += f"_{rolling_history}"
     if use_prior_season_features:
-        slug += "_prior"
+        slug += f"_prior{prior_decay_games}"
     type_slug = season_type_slug(season_types)
     if type_slug != "regularseason":
         slug += f"_{type_slug}"
@@ -106,6 +109,7 @@ def load_or_build_model_frames(
     warmup_seasons: list[str] | None = None,
     rolling_history: str = "same-season",
     use_prior_season_features: bool = False,
+    prior_decay_games: int = 30,
     use_elo: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
@@ -122,6 +126,7 @@ def load_or_build_model_frames(
         warmup_seasons=warmup_seasons,
         rolling_history=rolling_history,
         use_prior_season_features=use_prior_season_features,
+        prior_decay_games=prior_decay_games,
         use_elo=use_elo,
         elo_k=elo_k,
         elo_playoff_k=elo_playoff_k,
@@ -149,6 +154,7 @@ def load_or_build_model_frames(
             min_periods=min_periods,
             rolling_history=rolling_history,
             use_prior_season_features=use_prior_season_features,
+            prior_decay_games=prior_decay_games,
         )
         matchup_frame = build_matchup_frame(team_games, rolling_window=rolling_window)
         latest_elos = None
@@ -209,6 +215,7 @@ def build_elo_leaderboard(
     warmup_seasons: list[str] | None = None,
     rolling_history: str = "same-season",
     use_prior_season_features: bool = False,
+    prior_decay_games: int = 30,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
     elo_home_advantage: float = 65,
@@ -225,6 +232,7 @@ def build_elo_leaderboard(
         warmup_seasons=warmup_seasons,
         rolling_history=rolling_history,
         use_prior_season_features=use_prior_season_features,
+        prior_decay_games=prior_decay_games,
         use_elo=True,
         elo_k=elo_k,
         elo_playoff_k=elo_playoff_k,
@@ -248,12 +256,14 @@ def train_model(
     warmup_seasons: list[str] | None = None,
     rolling_history: str = "same-season",
     use_prior_season_features: bool = False,
+    prior_decay_games: int = 30,
     use_elo: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
     elo_home_advantage: float = 65,
     elo_carryover: float = 0.75,
     cv_splits: int = 0,
+    cv_method: str = "timeseries",
     refresh: bool = False,
 ) -> TrainingResult:
     team_games, matchup_data, latest_elos = load_or_build_model_frames(
@@ -266,6 +276,7 @@ def train_model(
         warmup_seasons=warmup_seasons,
         rolling_history=rolling_history,
         use_prior_season_features=use_prior_season_features,
+        prior_decay_games=prior_decay_games,
         use_elo=use_elo,
         elo_k=elo_k,
         elo_playoff_k=elo_playoff_k,
@@ -283,7 +294,12 @@ def train_model(
     y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
 
     model = make_model()
-    cv_scores = temporal_cv_scores(model, x, y, splits=cv_splits) if cv_splits else None
+    if cv_splits and cv_method == "walk-forward":
+        cv_scores = walk_forward_cv_scores(model, x, y, matchup_data.full["GAME_DATE"], splits=cv_splits)
+    elif cv_splits:
+        cv_scores = temporal_cv_scores(model, x, y, splits=cv_splits)
+    else:
+        cv_scores = None
     model.fit(x_train, y_train)
 
     probabilities = model.predict_proba(x_test)[:, 1]
@@ -301,6 +317,7 @@ def train_model(
         feature_mode=feature_mode,
         rolling_history=rolling_history,
         use_prior_season_features=use_prior_season_features,
+        prior_decay_games=prior_decay_games,
         warmup_seasons=warmup_seasons or [],
         use_elo=use_elo,
         season_types=season_types or ["Regular Season"],

@@ -19,6 +19,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--min-periods", type=int, default=5)
     parser.add_argument("--rolling-history", choices=["same-season", "carryover"], default="same-season")
     parser.add_argument("--use-prior-season-features", action="store_true")
+    parser.add_argument("--prior-decay-games", type=int, default=30)
     parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
     parser.add_argument("--feature-mode", choices=["base", "full", "lean"], default="full")
     parser.add_argument("--use-elo", action="store_true")
@@ -37,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     add_common_args(train_parser)
     train_parser.add_argument("--model-out", type=Path)
     train_parser.add_argument("--cv-splits", type=int, default=0)
+    train_parser.add_argument("--cv-method", choices=["timeseries", "walk-forward"], default="timeseries")
     train_parser.add_argument("--reports-dir", type=Path, default=REPORTS_DIR)
 
     predict_parser = subparsers.add_parser("predict", help="Train/load and predict one matchup.")
@@ -54,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     cv_parser = subparsers.add_parser("cv", help="Run temporal cross-validation only.")
     add_common_args(cv_parser)
     cv_parser.add_argument("--cv-splits", type=int, default=5)
+    cv_parser.add_argument("--cv-method", choices=["timeseries", "walk-forward"], default="timeseries")
     cv_parser.add_argument("--reports-dir", type=Path, default=REPORTS_DIR)
 
     tune_parser = subparsers.add_parser("tune", help="Compare rolling-window/min-period settings.")
@@ -69,6 +72,7 @@ def parse_args() -> argparse.Namespace:
     tune_parser.add_argument("--elo-home-advantage", type=float, default=65)
     tune_parser.add_argument("--elo-carryover", type=float, default=0.75)
     tune_parser.add_argument("--cv-splits", type=int, default=0)
+    tune_parser.add_argument("--cv-method", choices=["timeseries", "walk-forward"], default="timeseries")
     tune_parser.add_argument("--refresh", action="store_true", help="Ignore cached nba_api and processed CSVs.")
     tune_parser.add_argument("--output", type=Path, default=REPORTS_DIR / "tuning_results.csv")
 
@@ -97,11 +101,13 @@ def parse_args() -> argparse.Namespace:
     tune_grid_parser.add_argument("--min-periods-grid", nargs="+", type=int, default=[5, 7, 10])
     tune_grid_parser.add_argument("--rolling-histories", nargs="+", choices=["same-season", "carryover"], default=["same-season"])
     tune_grid_parser.add_argument("--prior-season-features-grid", nargs="+", type=int, choices=[0, 1], default=[0])
+    tune_grid_parser.add_argument("--prior-decay-games-grid", nargs="+", type=int, default=[30])
     tune_grid_parser.add_argument("--elo-k-grid", nargs="+", type=float, default=[15, 20, 25])
     tune_grid_parser.add_argument("--elo-playoff-k-grid", nargs="+", type=float, default=[25, 30, 35, 40])
     tune_grid_parser.add_argument("--elo-home-advantage", type=float, default=65)
     tune_grid_parser.add_argument("--elo-carryover-grid", nargs="+", type=float, default=[0.75])
     tune_grid_parser.add_argument("--cv-splits", type=int, default=0)
+    tune_grid_parser.add_argument("--cv-method", choices=["timeseries", "walk-forward"], default="timeseries")
     tune_grid_parser.add_argument("--refresh", action="store_true", help="Ignore cached nba_api and processed CSVs.")
     tune_grid_parser.add_argument("--output", type=Path, default=REPORTS_DIR / "model_grid_results.csv")
 
@@ -157,6 +163,7 @@ def main() -> None:
             warmup_seasons=args.warmup_seasons,
             rolling_history=args.rolling_history,
             use_prior_season_features=args.use_prior_season_features,
+            prior_decay_games=args.prior_decay_games,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
@@ -179,6 +186,7 @@ def main() -> None:
             feature_mode=args.feature_mode,
             rolling_history=args.rolling_history,
             use_prior_season_features=args.use_prior_season_features,
+            prior_decay_games=args.prior_decay_games,
         )
         result = train_model(
             seasons=args.seasons,
@@ -190,12 +198,14 @@ def main() -> None:
             warmup_seasons=args.warmup_seasons,
             rolling_history=args.rolling_history,
             use_prior_season_features=args.use_prior_season_features,
+            prior_decay_games=args.prior_decay_games,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
             elo_carryover=args.elo_carryover,
             cv_splits=args.cv_splits,
+            cv_method=args.cv_method,
             refresh=args.refresh,
         )
         save_training_result(result, model_out)
@@ -229,12 +239,14 @@ def main() -> None:
             warmup_seasons=args.warmup_seasons,
             rolling_history=args.rolling_history,
             use_prior_season_features=args.use_prior_season_features,
+            prior_decay_games=args.prior_decay_games,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
             elo_carryover=args.elo_carryover,
             cv_splits=args.cv_splits,
+            cv_method=args.cv_method,
             refresh=args.refresh,
         )
         args.reports_dir.mkdir(parents=True, exist_ok=True)
@@ -258,6 +270,7 @@ def main() -> None:
             elo_home_advantage=args.elo_home_advantage,
             elo_carryover=args.elo_carryover,
             cv_splits=args.cv_splits,
+            cv_method=args.cv_method,
             refresh=args.refresh,
         )
         save_tuning_results(results, args.output)
@@ -278,6 +291,7 @@ def main() -> None:
             feature_mode=args.feature_mode,
             season_types=args.season_types,
             cv_splits=args.cv_splits,
+            cv_method=args.cv_method,
             refresh=args.refresh,
         )
         save_tuning_results(results, args.output)
@@ -299,8 +313,10 @@ def main() -> None:
             warmup_seasons=args.warmup_seasons,
             rolling_histories=args.rolling_histories,
             use_prior_season_features_values=[bool(value) for value in args.prior_season_features_grid],
+            prior_decay_games_values=args.prior_decay_games_grid,
             elo_home_advantage=args.elo_home_advantage,
             cv_splits=args.cv_splits,
+            cv_method=args.cv_method,
             refresh=args.refresh,
         )
         save_tuning_results(results, args.output)
@@ -319,6 +335,7 @@ def main() -> None:
             warmup_seasons=args.warmup_seasons,
             rolling_history=args.rolling_history,
             use_prior_season_features=args.use_prior_season_features,
+            prior_decay_games=args.prior_decay_games,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
@@ -341,6 +358,7 @@ def main() -> None:
             feature_mode=args.feature_mode,
             rolling_history=args.rolling_history,
             use_prior_season_features=args.use_prior_season_features,
+            prior_decay_games=args.prior_decay_games,
         )
         if args.retrain or not model_in.exists():
             result = train_model(
@@ -353,6 +371,7 @@ def main() -> None:
                 warmup_seasons=args.warmup_seasons,
                 rolling_history=args.rolling_history,
                 use_prior_season_features=args.use_prior_season_features,
+                prior_decay_games=args.prior_decay_games,
                 use_elo=args.use_elo,
                 elo_k=args.elo_k,
                 elo_playoff_k=args.elo_playoff_k,
