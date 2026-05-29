@@ -31,6 +31,13 @@ def regress_ratings_to_mean(
     }
 
 
+def season_year_key(season_id) -> str | None:
+    if pd.isna(season_id):
+        return None
+    season_text = str(int(season_id)) if isinstance(season_id, float) else str(season_id)
+    return season_text[-4:]
+
+
 def add_elo_features(
     matchup_frame: pd.DataFrame,
     initial_elo: float = 1500,
@@ -48,12 +55,12 @@ def add_elo_features(
     current_season = None
 
     for _, row in df.iterrows():
-        season_id = row.get("SEASON_ID")
-        if season_id is not None and season_id != current_season:
+        season_key = season_year_key(row.get("SEASON_ID"))
+        if season_key is not None and season_key != current_season:
             if current_season is not None:
                 ratings = regress_ratings_to_mean(ratings, initial_elo=initial_elo, carryover=carryover)
                 rating_history = {team: [rating] for team, rating in ratings.items()}
-            current_season = season_id
+            current_season = season_key
 
         home = row["HOME_TEAM"]
         away = row["AWAY_TEAM"]

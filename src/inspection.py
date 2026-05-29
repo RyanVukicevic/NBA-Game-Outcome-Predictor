@@ -5,7 +5,7 @@ from pathlib import Path
 from config import ID_COLUMNS
 from data import load_game_logs
 from elo import add_elo_features
-from features import add_team_features, build_matchup_dataset, select_feature_names
+from features import add_interaction_features, add_team_features, build_matchup_dataset, select_feature_names
 
 
 def export_model_stages(
@@ -48,6 +48,8 @@ def export_model_stages(
         deltas_frame = deltas.full
         full_frame = full.full
 
+    deltas_frame = add_interaction_features(deltas_frame, rolling_window=rolling_window)
+    full_frame = add_interaction_features(full_frame, rolling_window=rolling_window)
     deltas_feature_names = select_feature_names(deltas_frame, feature_set="deltas", use_elo=use_elo)
     selected_frame = deltas_frame if feature_set == "deltas" else full_frame
     selected_feature_names = select_feature_names(selected_frame, feature_set=feature_set, use_elo=use_elo)

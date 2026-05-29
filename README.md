@@ -115,6 +115,6 @@ This is a clean baseline, not a finished betting model. It only uses team-level 
 
 Use `--feature-set deltas` to train on home-minus-away feature differences only. Use `--feature-set full` to train on home features, away features, and their deltas.
 Default model filenames include the feature set and rolling settings, for example `models/game_predictor_deltas_rw10_min5.joblib`.
-With `--use-elo`, the model gets `diff_elo_pre`, `diff_elo_change_last_3`, and `diff_elo_change_last_5` for `deltas`, or home/away/diff Elo columns for `full`. When playoffs are included, the model also gets `IS_PLAYOFFS`.
+With `--use-elo`, the model gets `diff_elo_pre`, `diff_elo_change_last_3`, and `diff_elo_change_last_5` for `deltas`, or home/away/diff Elo columns for `full`. When playoffs are included, the model also gets `IS_PLAYOFFS`. The feature pipeline also adds a small set of interpretable interaction features for rest advantage, possession control, playoff-specific Elo/margin/rest effects, and Elo-by-plus-minus agreement.
 
 Good next upgrades are injuries/lineups, betting lines, opponent-adjusted ratings, back-to-back flags, and a stricter walk-forward validation split.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from config import BOX_SCORE_COLUMNS
+from features import add_interaction_features
 from modeling import TrainingResult
 
 
@@ -53,5 +54,6 @@ def predict_matchup(result: TrainingResult, home: str, away: str, is_playoffs: b
             sample[f"away_elo_change_last_{window}"] = away_change
             sample[f"diff_elo_change_last_{window}"] = home_change - away_change
 
-    x_pred = pd.DataFrame([sample], columns=result.feature_names)
+    x_pred = add_interaction_features(pd.DataFrame([sample]), rolling_window=result.rolling_window)
+    x_pred = x_pred.reindex(columns=result.feature_names, fill_value=0.0)
     return float(result.model.predict_proba(x_pred)[0, 1])

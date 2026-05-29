@@ -101,6 +101,39 @@ def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.Dat
     return pd.DataFrame(rows).sort_values("GAME_DATE").reset_index(drop=True)
 
 
+def add_interaction_features(matchup_frame: pd.DataFrame, rolling_window: int) -> pd.DataFrame:
+    df = matchup_frame.copy()
+    plus_minus = f"diff_rolling_{rolling_window}_plus_minus"
+    rebounds = f"diff_rolling_{rolling_window}_reb"
+    turnovers = f"diff_rolling_{rolling_window}_tov"
+
+    if "HOME_REST_DAYS" in df.columns and "AWAY_REST_DAYS" in df.columns:
+        df["diff_rest_days"] = df["HOME_REST_DAYS"] - df["AWAY_REST_DAYS"]
+        df["home_rest_advantage"] = df["diff_rest_days"].clip(lower=0)
+        df["away_rest_advantage"] = (-df["diff_rest_days"]).clip(lower=0)
+        if "IS_PLAYOFFS" in df.columns:
+            df["playoff_x_diff_rest_days"] = df["IS_PLAYOFFS"] * df["diff_rest_days"]
+
+    if rebounds in df.columns and turnovers in df.columns:
+        df[f"diff_rolling_{rolling_window}_possession_control"] = df[rebounds] - df[turnovers]
+
+    if "IS_PLAYOFFS" in df.columns and plus_minus in df.columns:
+        df[f"playoff_x_{plus_minus}"] = df["IS_PLAYOFFS"] * df[plus_minus]
+
+    if "diff_elo_pre" in df.columns:
+        if "IS_PLAYOFFS" in df.columns:
+            df["playoff_x_diff_elo_pre"] = df["IS_PLAYOFFS"] * df["diff_elo_pre"]
+        if plus_minus in df.columns:
+            df["diff_elo_pre_x_diff_plus_minus"] = df["diff_elo_pre"] * df[plus_minus]
+
+    for window in [3, 5]:
+        column = f"diff_elo_change_last_{window}"
+        if "IS_PLAYOFFS" in df.columns and column in df.columns:
+            df[f"playoff_x_{column}"] = df["IS_PLAYOFFS"] * df[column]
+
+    return df
+
+
 def select_feature_names(matchup_frame: pd.DataFrame, feature_set: str, use_elo: bool = False) -> list[str]:
     if feature_set == "deltas":
         prefixes = ("diff_",)
@@ -112,7 +145,16 @@ def select_feature_names(matchup_frame: pd.DataFrame, feature_set: str, use_elo:
     feature_names = [
         column
         for column in matchup_frame.columns
-        if column.startswith(prefixes) or column in {"HOME_REST_DAYS", "AWAY_REST_DAYS", "IS_PLAYOFFS"}
+        if column.startswith(prefixes)
+        or column.startswith("playoff_x_")
+        or column
+        in {
+            "HOME_REST_DAYS",
+            "AWAY_REST_DAYS",
+            "IS_PLAYOFFS",
+            "home_rest_advantage",
+            "away_rest_advantage",
+        }
     ]
     if use_elo:
         if feature_set == "deltas":

@@ -17,6 +17,7 @@ from elo import add_elo_features
 from evaluation import calibration_table, evaluate_probabilities, temporal_cv_scores
 from features import (
     MatchupData,
+    add_interaction_features,
     add_team_features,
     build_matchup_frame,
     latest_features_by_team,
@@ -131,6 +132,7 @@ def load_or_build_model_frames(
         team_games.to_csv(team_features_path, index=False)
         matchup_frame.to_csv(matchup_path, index=False)
 
+    matchup_frame = add_interaction_features(matchup_frame, rolling_window=rolling_window)
     feature_names = select_feature_names(matchup_frame, feature_set=feature_set, use_elo=use_elo)
     return team_games, MatchupData(
         full=matchup_frame,
