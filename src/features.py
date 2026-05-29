@@ -134,7 +134,12 @@ def add_interaction_features(matchup_frame: pd.DataFrame, rolling_window: int) -
     return df
 
 
-def select_feature_names(matchup_frame: pd.DataFrame, feature_set: str, use_elo: bool = False) -> list[str]:
+def select_feature_names(
+    matchup_frame: pd.DataFrame,
+    feature_set: str,
+    use_elo: bool = False,
+    feature_mode: str = "full",
+) -> list[str]:
     if feature_set == "deltas":
         prefixes = ("diff_",)
     elif feature_set == "full":
@@ -142,25 +147,80 @@ def select_feature_names(matchup_frame: pd.DataFrame, feature_set: str, use_elo:
     else:
         raise ValueError("feature_set must be either 'deltas' or 'full'")
 
+    if feature_mode not in {"base", "full", "lean"}:
+        raise ValueError("feature_mode must be one of: base, full, lean")
+
+    interaction_columns = {
+        column
+        for column in matchup_frame.columns
+        if column.startswith("playoff_x_")
+        or column
+        in {
+            "diff_rest_days",
+            "home_rest_advantage",
+            "away_rest_advantage",
+            "diff_elo_pre_x_diff_plus_minus",
+        }
+        or column.endswith("_possession_control")
+    }
+
     feature_names = [
         column
         for column in matchup_frame.columns
         if column.startswith(prefixes)
-        or column.startswith("playoff_x_")
         or column
         in {
             "HOME_REST_DAYS",
             "AWAY_REST_DAYS",
             "IS_PLAYOFFS",
-            "home_rest_advantage",
-            "away_rest_advantage",
         }
     ]
+    if feature_mode == "base":
+        feature_names = [column for column in feature_names if column not in interaction_columns]
+
     if use_elo:
         if feature_set == "deltas":
             feature_names.extend(["diff_elo_pre", "diff_elo_change_last_3", "diff_elo_change_last_5"])
         else:
             feature_names.extend(ELO_COLUMNS)
+
+    if feature_mode in {"full", "lean"}:
+        feature_names.extend(
+            [
+                column
+                for column in matchup_frame.columns
+                if column.startswith("playoff_x_")
+                or column in {"home_rest_advantage", "away_rest_advantage"}
+            ]
+        )
+
+    if feature_mode == "lean":
+        keep_exact = {
+            "diff_elo_pre",
+            "diff_elo_change_last_5",
+            "diff_rest_days",
+            "HOME_REST_DAYS",
+            "AWAY_REST_DAYS",
+            "home_rest_advantage",
+            "away_rest_advantage",
+            "IS_PLAYOFFS",
+            "playoff_x_diff_elo_pre",
+            "playoff_x_diff_rest_days",
+            "diff_elo_pre_x_diff_plus_minus",
+        }
+        keep_suffixes = {
+            "_plus_minus",
+            "_fg_pct",
+            "_fg3_pct",
+            "_tov",
+        }
+        feature_names = [
+            column
+            for column in feature_names
+            if column in keep_exact
+            or (column.startswith("playoff_x_diff_rolling_") and column.endswith("_plus_minus"))
+            or (column.startswith("diff_rolling_") and any(column.endswith(suffix) for suffix in keep_suffixes))
+        ]
 
     return list(dict.fromkeys(column for column in feature_names if column in matchup_frame.columns))
 
@@ -170,9 +230,15 @@ def build_matchup_dataset(
     rolling_window: int,
     feature_set: str = "deltas",
     use_elo: bool = False,
+    feature_mode: str = "full",
 ) -> MatchupData:
     matchup_frame = build_matchup_frame(team_games, rolling_window=rolling_window)
-    feature_names = select_feature_names(matchup_frame, feature_set=feature_set, use_elo=use_elo)
+    feature_names = select_feature_names(
+        matchup_frame,
+        feature_set=feature_set,
+        use_elo=use_elo,
+        feature_mode=feature_mode,
+    )
     return MatchupData(
         full=matchup_frame,
         x=matchup_frame[feature_names],

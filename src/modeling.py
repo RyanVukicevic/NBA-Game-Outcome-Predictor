@@ -33,6 +33,7 @@ class TrainingResult:
     rolling_window: int
     min_periods: int
     feature_set: str
+    feature_mode: str
     use_elo: bool
     season_types: list[str]
     latest_elos: pd.DataFrame | None
@@ -83,6 +84,7 @@ def load_or_build_model_frames(
     rolling_window: int,
     min_periods: int,
     feature_set: str,
+    feature_mode: str = "full",
     season_types: list[str] | None = None,
     use_elo: bool = False,
     elo_k: float = 20,
@@ -133,7 +135,12 @@ def load_or_build_model_frames(
         matchup_frame.to_csv(matchup_path, index=False)
 
     matchup_frame = add_interaction_features(matchup_frame, rolling_window=rolling_window)
-    feature_names = select_feature_names(matchup_frame, feature_set=feature_set, use_elo=use_elo)
+    feature_names = select_feature_names(
+        matchup_frame,
+        feature_set=feature_set,
+        use_elo=use_elo,
+        feature_mode=feature_mode,
+    )
     return team_games, MatchupData(
         full=matchup_frame,
         x=matchup_frame[feature_names],
@@ -161,6 +168,7 @@ def build_elo_leaderboard(
     rolling_window: int = 20,
     min_periods: int = 7,
     feature_set: str = "deltas",
+    feature_mode: str = "full",
     season_types: list[str] | None = None,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
@@ -173,6 +181,7 @@ def build_elo_leaderboard(
         rolling_window=rolling_window,
         min_periods=min_periods,
         feature_set=feature_set,
+        feature_mode=feature_mode,
         season_types=season_types,
         use_elo=True,
         elo_k=elo_k,
@@ -192,6 +201,7 @@ def train_model(
     min_periods: int = 5,
     test_fraction: float = 0.2,
     feature_set: str = "deltas",
+    feature_mode: str = "full",
     season_types: list[str] | None = None,
     use_elo: bool = False,
     elo_k: float = 20,
@@ -206,6 +216,7 @@ def train_model(
         rolling_window=rolling_window,
         min_periods=min_periods,
         feature_set=feature_set,
+        feature_mode=feature_mode,
         season_types=season_types,
         use_elo=use_elo,
         elo_k=elo_k,
@@ -239,6 +250,7 @@ def train_model(
         rolling_window=rolling_window,
         min_periods=min_periods,
         feature_set=feature_set,
+        feature_mode=feature_mode,
         use_elo=use_elo,
         season_types=season_types or ["Regular Season"],
         latest_elos=latest_elos,

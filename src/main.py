@@ -17,6 +17,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--rolling-window", type=int, default=10)
     parser.add_argument("--min-periods", type=int, default=5)
     parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
+    parser.add_argument("--feature-mode", choices=["base", "full", "lean"], default="full")
     parser.add_argument("--use-elo", action="store_true")
     parser.add_argument("--elo-k", type=float, default=20)
     parser.add_argument("--elo-playoff-k", type=float, default=None)
@@ -58,6 +59,7 @@ def parse_args() -> argparse.Namespace:
     tune_parser.add_argument("--rolling-windows", nargs="+", type=int, default=[5, 10, 15, 20])
     tune_parser.add_argument("--min-periods-grid", nargs="+", type=int, default=[3, 5, 8, 10])
     tune_parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
+    tune_parser.add_argument("--feature-mode", choices=["base", "full", "lean"], default="full")
     tune_parser.add_argument("--use-elo", action="store_true")
     tune_parser.add_argument("--elo-k", type=float, default=20)
     tune_parser.add_argument("--elo-playoff-k", type=float, default=None)
@@ -73,6 +75,7 @@ def parse_args() -> argparse.Namespace:
     tune_elo_parser.add_argument("--rolling-window", type=int, default=20)
     tune_elo_parser.add_argument("--min-periods", type=int, default=7)
     tune_elo_parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
+    tune_elo_parser.add_argument("--feature-mode", choices=["base", "full", "lean"], default="full")
     tune_elo_parser.add_argument("--elo-k-grid", nargs="+", type=float, default=[10, 15, 20, 25, 30])
     tune_elo_parser.add_argument("--elo-playoff-k", type=float, default=None)
     tune_elo_parser.add_argument("--elo-home-advantage-grid", nargs="+", type=float, default=[40, 55, 65, 75, 90])
@@ -87,6 +90,7 @@ def parse_args() -> argparse.Namespace:
     elo_board_parser.add_argument("--rolling-window", type=int, default=20)
     elo_board_parser.add_argument("--min-periods", type=int, default=7)
     elo_board_parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
+    elo_board_parser.add_argument("--feature-mode", choices=["base", "full", "lean"], default="full")
     elo_board_parser.add_argument("--elo-k", type=float, default=20)
     elo_board_parser.add_argument("--elo-playoff-k", type=float, default=None)
     elo_board_parser.add_argument("--elo-home-advantage", type=float, default=65)
@@ -124,6 +128,7 @@ def main() -> None:
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
             feature_set=args.feature_set,
+            feature_mode=args.feature_mode,
             season_types=args.season_types,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
@@ -144,12 +149,14 @@ def main() -> None:
             args.min_periods,
             use_elo=args.use_elo,
             season_types=args.season_types,
+            feature_mode=args.feature_mode,
         )
         result = train_model(
             seasons=args.seasons,
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
             feature_set=args.feature_set,
+            feature_mode=args.feature_mode,
             season_types=args.season_types,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
@@ -185,6 +192,7 @@ def main() -> None:
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
             feature_set=args.feature_set,
+            feature_mode=args.feature_mode,
             season_types=args.season_types,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
@@ -207,6 +215,7 @@ def main() -> None:
             rolling_windows=args.rolling_windows,
             min_periods_values=args.min_periods_grid,
             feature_set=args.feature_set,
+            feature_mode=args.feature_mode,
             season_types=args.season_types,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
@@ -231,6 +240,7 @@ def main() -> None:
             elo_carryovers=args.elo_carryover_grid,
             elo_playoff_k=args.elo_playoff_k,
             feature_set=args.feature_set,
+            feature_mode=args.feature_mode,
             season_types=args.season_types,
             cv_splits=args.cv_splits,
             refresh=args.refresh,
@@ -246,6 +256,7 @@ def main() -> None:
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
             feature_set=args.feature_set,
+            feature_mode=args.feature_mode,
             season_types=args.season_types,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
@@ -266,6 +277,7 @@ def main() -> None:
             args.min_periods,
             use_elo=args.use_elo,
             season_types=args.season_types,
+            feature_mode=args.feature_mode,
         )
         if args.retrain or not model_in.exists():
             result = train_model(
@@ -273,6 +285,7 @@ def main() -> None:
                 rolling_window=args.rolling_window,
                 min_periods=args.min_periods,
                 feature_set=args.feature_set,
+                feature_mode=args.feature_mode,
                 season_types=args.season_types,
                 use_elo=args.use_elo,
                 elo_k=args.elo_k,

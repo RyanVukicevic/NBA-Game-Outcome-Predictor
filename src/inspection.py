@@ -14,6 +14,7 @@ def export_model_stages(
     rolling_window: int = 10,
     min_periods: int = 5,
     feature_set: str = "deltas",
+    feature_mode: str = "full",
     season_types: list[str] | None = None,
     use_elo: bool = False,
     elo_k: float = 20,
@@ -50,9 +51,19 @@ def export_model_stages(
 
     deltas_frame = add_interaction_features(deltas_frame, rolling_window=rolling_window)
     full_frame = add_interaction_features(full_frame, rolling_window=rolling_window)
-    deltas_feature_names = select_feature_names(deltas_frame, feature_set="deltas", use_elo=use_elo)
+    deltas_feature_names = select_feature_names(
+        deltas_frame,
+        feature_set="deltas",
+        use_elo=use_elo,
+        feature_mode=feature_mode,
+    )
     selected_frame = deltas_frame if feature_set == "deltas" else full_frame
-    selected_feature_names = select_feature_names(selected_frame, feature_set=feature_set, use_elo=use_elo)
+    selected_feature_names = select_feature_names(
+        selected_frame,
+        feature_set=feature_set,
+        use_elo=use_elo,
+        feature_mode=feature_mode,
+    )
 
     paths = {
         "raw_game_logs": output_dir / "01_raw_game_logs.csv",

@@ -12,6 +12,7 @@ def tune_rolling_settings(
     rolling_windows: list[int],
     min_periods_values: list[int],
     feature_set: str = "deltas",
+    feature_mode: str = "full",
     season_types: list[str] | None = None,
     use_elo: bool = False,
     elo_k: float = 20,
@@ -33,6 +34,7 @@ def tune_rolling_settings(
                 rolling_window=rolling_window,
                 min_periods=min_periods,
                 feature_set=feature_set,
+                feature_mode=feature_mode,
                 season_types=season_types,
                 use_elo=use_elo,
                 elo_k=elo_k,
@@ -45,6 +47,7 @@ def tune_rolling_settings(
 
             row = {
                 "feature_set": feature_set,
+                "feature_mode": feature_mode,
                 "season_types": ",".join(season_types or ["Regular Season"]),
                 "use_elo": use_elo,
                 "elo_k": elo_k if use_elo else None,
@@ -78,6 +81,7 @@ def tune_elo_settings(
     elo_carryovers: list[float],
     elo_playoff_k: float | None = None,
     feature_set: str = "deltas",
+    feature_mode: str = "full",
     season_types: list[str] | None = None,
     cv_splits: int = 0,
     refresh: bool = False,
@@ -92,6 +96,7 @@ def tune_elo_settings(
                     rolling_window=rolling_window,
                     min_periods=min_periods,
                     feature_set=feature_set,
+                    feature_mode=feature_mode,
                     season_types=season_types,
                     use_elo=True,
                     elo_k=elo_k,
@@ -104,6 +109,7 @@ def tune_elo_settings(
 
                 row = {
                     "feature_set": feature_set,
+                    "feature_mode": feature_mode,
                     "season_types": ",".join(season_types or ["Regular Season"]),
                     "use_elo": True,
                     "rolling_window": rolling_window,

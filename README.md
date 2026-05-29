@@ -57,6 +57,12 @@ To include playoff games, pass both season types. Quote `Regular Season` because
 python src/main.py train --seasons 2023-24 2024-25 2025-26 --season-types "Regular Season" Playoffs --feature-set deltas --rolling-window 20 --min-periods 7 --use-elo --elo-playoff-k 30 --cv-splits 5
 ```
 
+Feature modes:
+
+- `--feature-mode base`: original model-style features plus `IS_PLAYOFFS`
+- `--feature-mode full`: base plus all engineered interaction features
+- `--feature-mode lean`: a smaller handpicked interaction subset
+
 ## Tune Rolling Settings
 
 Compare rolling-window and min-period combinations:
