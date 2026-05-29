@@ -11,6 +11,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from config import MODEL_PATH, PROCESSED_CACHE_DIR
+from config import season_type_slug
 from data import load_game_logs
 from elo import add_elo_features
 from evaluation import calibration_table, evaluate_probabilities, temporal_cv_scores
@@ -32,8 +33,10 @@ class TrainingResult:
     min_periods: int
     feature_set: str
     use_elo: bool
+    season_types: list[str]
     latest_elos: pd.DataFrame | None
     elo_k: float
+    elo_playoff_k: float | None
     elo_home_advantage: float
     elo_carryover: float
     metrics: dict[str, float]
@@ -55,15 +58,22 @@ def cache_slug(
     seasons: list[str],
     rolling_window: int,
     min_periods: int,
+    season_types: list[str] | None = None,
     use_elo: bool = False,
     elo_k: float = 20,
+    elo_playoff_k: float | None = None,
     elo_home_advantage: float = 65,
     elo_carryover: float = 0.75,
 ) -> str:
     season_part = "_".join(season.replace("-", "_") for season in seasons)
     slug = f"{season_part}_rw{rolling_window}_min{min_periods}"
+    type_slug = season_type_slug(season_types)
+    if type_slug != "regularseason":
+        slug += f"_{type_slug}"
     if use_elo:
         slug += f"_elo_k{elo_k:g}_ha{elo_home_advantage:g}_co{elo_carryover:g}_mom3_5"
+        if elo_playoff_k is not None:
+            slug += f"_pk{elo_playoff_k:g}"
     return slug
 
 
@@ -72,8 +82,10 @@ def load_or_build_model_frames(
     rolling_window: int,
     min_periods: int,
     feature_set: str,
+    season_types: list[str] | None = None,
     use_elo: bool = False,
     elo_k: float = 20,
+    elo_playoff_k: float | None = None,
     elo_home_advantage: float = 65,
     elo_carryover: float = 0.75,
     refresh: bool = False,
@@ -83,8 +95,10 @@ def load_or_build_model_frames(
         seasons,
         rolling_window=rolling_window,
         min_periods=min_periods,
+        season_types=season_types,
         use_elo=use_elo,
         elo_k=elo_k,
+        elo_playoff_k=elo_playoff_k,
         elo_home_advantage=elo_home_advantage,
         elo_carryover=elo_carryover,
     )
@@ -101,7 +115,7 @@ def load_or_build_model_frames(
             else None
         )
     else:
-        logs = load_game_logs(seasons, refresh=refresh)
+        logs = load_game_logs(seasons, season_types=season_types, refresh=refresh)
         team_games = add_team_features(logs, rolling_window=rolling_window, min_periods=min_periods)
         matchup_frame = build_matchup_frame(team_games, rolling_window=rolling_window)
         latest_elos = None
@@ -109,6 +123,7 @@ def load_or_build_model_frames(
             matchup_frame, latest_elos = add_elo_features(
                 matchup_frame,
                 k_factor=elo_k,
+                playoff_k_factor=elo_playoff_k,
                 home_advantage=elo_home_advantage,
                 carryover=elo_carryover,
             )
@@ -144,7 +159,9 @@ def build_elo_leaderboard(
     rolling_window: int = 20,
     min_periods: int = 7,
     feature_set: str = "deltas",
+    season_types: list[str] | None = None,
     elo_k: float = 20,
+    elo_playoff_k: float | None = None,
     elo_home_advantage: float = 65,
     elo_carryover: float = 0.75,
     refresh: bool = False,
@@ -154,8 +171,10 @@ def build_elo_leaderboard(
         rolling_window=rolling_window,
         min_periods=min_periods,
         feature_set=feature_set,
+        season_types=season_types,
         use_elo=True,
         elo_k=elo_k,
+        elo_playoff_k=elo_playoff_k,
         elo_home_advantage=elo_home_advantage,
         elo_carryover=elo_carryover,
         refresh=refresh,
@@ -171,8 +190,10 @@ def train_model(
     min_periods: int = 5,
     test_fraction: float = 0.2,
     feature_set: str = "deltas",
+    season_types: list[str] | None = None,
     use_elo: bool = False,
     elo_k: float = 20,
+    elo_playoff_k: float | None = None,
     elo_home_advantage: float = 65,
     elo_carryover: float = 0.75,
     cv_splits: int = 0,
@@ -183,8 +204,10 @@ def train_model(
         rolling_window=rolling_window,
         min_periods=min_periods,
         feature_set=feature_set,
+        season_types=season_types,
         use_elo=use_elo,
         elo_k=elo_k,
+        elo_playoff_k=elo_playoff_k,
         elo_home_advantage=elo_home_advantage,
         elo_carryover=elo_carryover,
         refresh=refresh,
@@ -215,8 +238,10 @@ def train_model(
         min_periods=min_periods,
         feature_set=feature_set,
         use_elo=use_elo,
+        season_types=season_types or ["Regular Season"],
         latest_elos=latest_elos,
         elo_k=elo_k,
+        elo_playoff_k=elo_playoff_k,
         elo_home_advantage=elo_home_advantage,
         elo_carryover=elo_carryover,
         metrics=metrics,

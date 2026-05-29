@@ -14,15 +14,17 @@ def export_model_stages(
     rolling_window: int = 10,
     min_periods: int = 5,
     feature_set: str = "deltas",
+    season_types: list[str] | None = None,
     use_elo: bool = False,
     elo_k: float = 20,
+    elo_playoff_k: float | None = None,
     elo_home_advantage: float = 65,
     elo_carryover: float = 0.75,
     refresh: bool = False,
 ) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_logs = load_game_logs(seasons, refresh=refresh)
+    raw_logs = load_game_logs(seasons, season_types=season_types, refresh=refresh)
     team_features = add_team_features(raw_logs, rolling_window=rolling_window, min_periods=min_periods)
     deltas = build_matchup_dataset(team_features, rolling_window=rolling_window, feature_set="deltas")
     full = build_matchup_dataset(team_features, rolling_window=rolling_window, feature_set="full")
@@ -31,12 +33,14 @@ def export_model_stages(
         deltas_frame = add_elo_features(
             deltas.full,
             k_factor=elo_k,
+            playoff_k_factor=elo_playoff_k,
             home_advantage=elo_home_advantage,
             carryover=elo_carryover,
         )[0]
         full_frame = add_elo_features(
             full.full,
             k_factor=elo_k,
+            playoff_k_factor=elo_playoff_k,
             home_advantage=elo_home_advantage,
             carryover=elo_carryover,
         )[0]

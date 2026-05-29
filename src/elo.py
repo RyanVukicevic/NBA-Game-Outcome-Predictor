@@ -35,10 +35,12 @@ def add_elo_features(
     matchup_frame: pd.DataFrame,
     initial_elo: float = 1500,
     k_factor: float = 20,
+    playoff_k_factor: float | None = None,
     home_advantage: float = 65,
     carryover: float = 0.75,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Add pre-game Elo features and return final team ratings."""
+    playoff_k_factor = playoff_k_factor if playoff_k_factor is not None else k_factor
     df = matchup_frame.sort_values(["GAME_DATE", "GAME_ID"]).reset_index(drop=True).copy()
     ratings: dict[str, float] = {}
     rating_history: dict[str, list[float]] = {}
@@ -77,7 +79,8 @@ def add_elo_features(
             updated[f"diff_elo_change_last_{window}"] = home_change - away_change
         rows.append(updated)
 
-        elo_delta = k_factor * (home_win - expected_home)
+        active_k = playoff_k_factor if int(row.get("IS_PLAYOFFS", 0)) else k_factor
+        elo_delta = active_k * (home_win - expected_home)
         ratings[home] = home_elo + elo_delta
         ratings[away] = away_elo - elo_delta
         home_history.append(ratings[home])

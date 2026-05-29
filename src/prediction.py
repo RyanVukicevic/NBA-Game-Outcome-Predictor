@@ -6,7 +6,7 @@ from config import BOX_SCORE_COLUMNS
 from modeling import TrainingResult
 
 
-def predict_matchup(result: TrainingResult, home: str, away: str) -> float:
+def predict_matchup(result: TrainingResult, home: str, away: str, is_playoffs: bool = False) -> float:
     home = home.upper()
     away = away.upper()
     latest = result.latest_team_features
@@ -19,6 +19,7 @@ def predict_matchup(result: TrainingResult, home: str, away: str) -> float:
     home_row = latest.loc[home]
     away_row = latest.loc[away]
     sample = {
+        "IS_PLAYOFFS": int(is_playoffs),
         "HOME_REST_DAYS": 3.0,
         "AWAY_REST_DAYS": 3.0,
     }

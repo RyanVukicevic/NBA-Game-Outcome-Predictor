@@ -13,11 +13,13 @@ from tuning import save_tuning_results, tune_elo_settings, tune_rolling_settings
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--seasons", nargs="+", default=["2022-23", "2023-24", "2024-25"])
+    parser.add_argument("--season-types", nargs="+", choices=["Regular Season", "Playoffs"], default=["Regular Season"])
     parser.add_argument("--rolling-window", type=int, default=10)
     parser.add_argument("--min-periods", type=int, default=5)
     parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
     parser.add_argument("--use-elo", action="store_true")
     parser.add_argument("--elo-k", type=float, default=20)
+    parser.add_argument("--elo-playoff-k", type=float, default=None)
     parser.add_argument("--elo-home-advantage", type=float, default=65)
     parser.add_argument("--elo-carryover", type=float, default=0.75)
     parser.add_argument("--refresh", action="store_true", help="Ignore cached nba_api CSVs.")
@@ -37,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     add_common_args(predict_parser)
     predict_parser.add_argument("--home", required=True, help="Home team abbreviation, e.g. BOS")
     predict_parser.add_argument("--away", required=True, help="Away team abbreviation, e.g. NYK")
+    predict_parser.add_argument("--is-playoffs", action="store_true")
     predict_parser.add_argument("--model-in", type=Path)
     predict_parser.add_argument("--retrain", action="store_true", help="Retrain before predicting.")
 
@@ -51,11 +54,13 @@ def parse_args() -> argparse.Namespace:
 
     tune_parser = subparsers.add_parser("tune", help="Compare rolling-window/min-period settings.")
     tune_parser.add_argument("--seasons", nargs="+", default=["2022-23", "2023-24", "2024-25"])
+    tune_parser.add_argument("--season-types", nargs="+", choices=["Regular Season", "Playoffs"], default=["Regular Season"])
     tune_parser.add_argument("--rolling-windows", nargs="+", type=int, default=[5, 10, 15, 20])
     tune_parser.add_argument("--min-periods-grid", nargs="+", type=int, default=[3, 5, 8, 10])
     tune_parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
     tune_parser.add_argument("--use-elo", action="store_true")
     tune_parser.add_argument("--elo-k", type=float, default=20)
+    tune_parser.add_argument("--elo-playoff-k", type=float, default=None)
     tune_parser.add_argument("--elo-home-advantage", type=float, default=65)
     tune_parser.add_argument("--elo-carryover", type=float, default=0.75)
     tune_parser.add_argument("--cv-splits", type=int, default=0)
@@ -64,10 +69,12 @@ def parse_args() -> argparse.Namespace:
 
     tune_elo_parser = subparsers.add_parser("tune-elo", help="Compare Elo K/home-advantage/carryover settings.")
     tune_elo_parser.add_argument("--seasons", nargs="+", default=["2022-23", "2023-24", "2024-25"])
+    tune_elo_parser.add_argument("--season-types", nargs="+", choices=["Regular Season", "Playoffs"], default=["Regular Season"])
     tune_elo_parser.add_argument("--rolling-window", type=int, default=20)
     tune_elo_parser.add_argument("--min-periods", type=int, default=7)
     tune_elo_parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
     tune_elo_parser.add_argument("--elo-k-grid", nargs="+", type=float, default=[10, 15, 20, 25, 30])
+    tune_elo_parser.add_argument("--elo-playoff-k", type=float, default=None)
     tune_elo_parser.add_argument("--elo-home-advantage-grid", nargs="+", type=float, default=[40, 55, 65, 75, 90])
     tune_elo_parser.add_argument("--elo-carryover-grid", nargs="+", type=float, default=[0.5, 0.75, 0.9])
     tune_elo_parser.add_argument("--cv-splits", type=int, default=0)
@@ -76,10 +83,12 @@ def parse_args() -> argparse.Namespace:
 
     elo_board_parser = subparsers.add_parser("elo-leaderboard", help="Export current Elo ratings after selected seasons.")
     elo_board_parser.add_argument("--seasons", nargs="+", default=["2022-23", "2023-24", "2024-25"])
+    elo_board_parser.add_argument("--season-types", nargs="+", choices=["Regular Season", "Playoffs"], default=["Regular Season"])
     elo_board_parser.add_argument("--rolling-window", type=int, default=20)
     elo_board_parser.add_argument("--min-periods", type=int, default=7)
     elo_board_parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
     elo_board_parser.add_argument("--elo-k", type=float, default=20)
+    elo_board_parser.add_argument("--elo-playoff-k", type=float, default=None)
     elo_board_parser.add_argument("--elo-home-advantage", type=float, default=65)
     elo_board_parser.add_argument("--elo-carryover", type=float, default=0.75)
     elo_board_parser.add_argument("--refresh", action="store_true", help="Ignore cached nba_api and processed CSVs.")
@@ -115,8 +124,10 @@ def main() -> None:
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
             feature_set=args.feature_set,
+            season_types=args.season_types,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
+            elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
             elo_carryover=args.elo_carryover,
             refresh=args.refresh,
@@ -128,15 +139,21 @@ def main() -> None:
 
     if args.command == "train":
         model_out = args.model_out or default_model_path(
-            args.feature_set, args.rolling_window, args.min_periods, use_elo=args.use_elo
+            args.feature_set,
+            args.rolling_window,
+            args.min_periods,
+            use_elo=args.use_elo,
+            season_types=args.season_types,
         )
         result = train_model(
             seasons=args.seasons,
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
             feature_set=args.feature_set,
+            season_types=args.season_types,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
+            elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
             elo_carryover=args.elo_carryover,
             cv_splits=args.cv_splits,
@@ -168,8 +185,10 @@ def main() -> None:
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
             feature_set=args.feature_set,
+            season_types=args.season_types,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
+            elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
             elo_carryover=args.elo_carryover,
             cv_splits=args.cv_splits,
@@ -188,8 +207,10 @@ def main() -> None:
             rolling_windows=args.rolling_windows,
             min_periods_values=args.min_periods_grid,
             feature_set=args.feature_set,
+            season_types=args.season_types,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
+            elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
             elo_carryover=args.elo_carryover,
             cv_splits=args.cv_splits,
@@ -208,7 +229,9 @@ def main() -> None:
             elo_k_values=args.elo_k_grid,
             elo_home_advantages=args.elo_home_advantage_grid,
             elo_carryovers=args.elo_carryover_grid,
+            elo_playoff_k=args.elo_playoff_k,
             feature_set=args.feature_set,
+            season_types=args.season_types,
             cv_splits=args.cv_splits,
             refresh=args.refresh,
         )
@@ -223,7 +246,9 @@ def main() -> None:
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
             feature_set=args.feature_set,
+            season_types=args.season_types,
             elo_k=args.elo_k,
+            elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
             elo_carryover=args.elo_carryover,
             refresh=args.refresh,
@@ -236,7 +261,11 @@ def main() -> None:
 
     if args.command == "predict":
         model_in = args.model_in or default_model_path(
-            args.feature_set, args.rolling_window, args.min_periods, use_elo=args.use_elo
+            args.feature_set,
+            args.rolling_window,
+            args.min_periods,
+            use_elo=args.use_elo,
+            season_types=args.season_types,
         )
         if args.retrain or not model_in.exists():
             result = train_model(
@@ -244,8 +273,10 @@ def main() -> None:
                 rolling_window=args.rolling_window,
                 min_periods=args.min_periods,
                 feature_set=args.feature_set,
+                season_types=args.season_types,
                 use_elo=args.use_elo,
                 elo_k=args.elo_k,
+                elo_playoff_k=args.elo_playoff_k,
                 elo_home_advantage=args.elo_home_advantage,
                 elo_carryover=args.elo_carryover,
                 refresh=args.refresh,
@@ -254,7 +285,7 @@ def main() -> None:
         else:
             result = load_training_result(model_in)
 
-        probability = predict_matchup(result, args.home, args.away)
+        probability = predict_matchup(result, args.home, args.away, is_playoffs=args.is_playoffs)
         print(f"{args.home.upper()} home win probability vs {args.away.upper()}: {probability:.1%}")
 
 

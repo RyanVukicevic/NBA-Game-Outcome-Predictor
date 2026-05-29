@@ -29,6 +29,10 @@ def add_team_features(
     df = game_logs.copy()
     df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
     df["IS_HOME"] = df["MATCHUP"].str.contains(" vs. ", regex=False).astype(int)
+    if "SEASON_TYPE" in df.columns:
+        df["IS_PLAYOFFS"] = (df["SEASON_TYPE"] == "Playoffs").astype(int)
+    else:
+        df["IS_PLAYOFFS"] = 0
     df["WIN"] = (df["WL"] == "W").astype(int)
 
     for column in BOX_SCORE_COLUMNS:
@@ -79,6 +83,7 @@ def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.Dat
             "HOME_TEAM": home_row["TEAM_ABBREVIATION"],
             "AWAY_TEAM": away_row["TEAM_ABBREVIATION"],
             "HOME_WIN": int(home_row["WIN"]),
+            "IS_PLAYOFFS": int(home_row.get("IS_PLAYOFFS", 0)),
             "HOME_REST_DAYS": float(home_row["REST_DAYS"]),
             "AWAY_REST_DAYS": float(away_row["REST_DAYS"]),
         }
@@ -107,7 +112,7 @@ def select_feature_names(matchup_frame: pd.DataFrame, feature_set: str, use_elo:
     feature_names = [
         column
         for column in matchup_frame.columns
-        if column.startswith(prefixes) or column in {"HOME_REST_DAYS", "AWAY_REST_DAYS"}
+        if column.startswith(prefixes) or column in {"HOME_REST_DAYS", "AWAY_REST_DAYS", "IS_PLAYOFFS"}
     ]
     if use_elo:
         if feature_set == "deltas":

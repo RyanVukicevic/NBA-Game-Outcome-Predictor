@@ -45,10 +45,17 @@ python src/main.py train --seasons 2022-23 2023-24 2024-25 --feature-set deltas 
 Elo defaults:
 
 - `--elo-k 20`
+- `--elo-playoff-k`, optional; defaults to the regular Elo K when omitted
 - `--elo-home-advantage 65`
 - `--elo-carryover 0.75`
 
 Training with `--use-elo` also writes `reports/elo_leaderboard.csv`.
+
+To include playoff games, pass both season types. Quote `Regular Season` because it contains a space:
+
+```powershell
+python src/main.py train --seasons 2023-24 2024-25 2025-26 --season-types "Regular Season" Playoffs --feature-set deltas --rolling-window 20 --min-periods 7 --use-elo --elo-playoff-k 30 --cv-splits 5
+```
 
 ## Tune Rolling Settings
 
@@ -80,6 +87,12 @@ To export the Elo leaderboard without training a model:
 python src/main.py elo-leaderboard --seasons 2022-23 2023-24 2024-25 --elo-k 20 --elo-home-advantage 65 --elo-carryover 0.75
 ```
 
+To export a playoff-aware Elo leaderboard:
+
+```powershell
+python src/main.py elo-leaderboard --seasons 2023-24 2024-25 2025-26 --season-types "Regular Season" Playoffs --rolling-window 20 --min-periods 7 --feature-set deltas --elo-k 20 --elo-playoff-k 30 --elo-home-advantage 65 --elo-carryover 0.75 --output reports\elo_leaderboard_2023_24_2025_26_with_playoffs.csv
+```
+
 ## Predict A Game
 
 ```powershell
@@ -102,6 +115,6 @@ This is a clean baseline, not a finished betting model. It only uses team-level 
 
 Use `--feature-set deltas` to train on home-minus-away feature differences only. Use `--feature-set full` to train on home features, away features, and their deltas.
 Default model filenames include the feature set and rolling settings, for example `models/game_predictor_deltas_rw10_min5.joblib`.
-With `--use-elo`, the model gets `diff_elo_pre`, `diff_elo_change_last_3`, and `diff_elo_change_last_5` for `deltas`, or home/away/diff Elo columns for `full`.
+With `--use-elo`, the model gets `diff_elo_pre`, `diff_elo_change_last_3`, and `diff_elo_change_last_5` for `deltas`, or home/away/diff Elo columns for `full`. When playoffs are included, the model also gets `IS_PLAYOFFS`.
 
 Good next upgrades are injuries/lineups, betting lines, opponent-adjusted ratings, back-to-back flags, and a stricter walk-forward validation split.

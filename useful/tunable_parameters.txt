@@ -14,6 +14,8 @@ raw features + deltas / deltas only
 elo:
 whether to use elo at all
 elo_k - controls how much ratings move after each game
+playoff_k - diff from regular elo_k, higher as playoff games matter 
+more for elo gain/loss  
 carryover - regression toward 1500 (baseline) at start of new season
 home_adv - added elo to a team just for being home
 
