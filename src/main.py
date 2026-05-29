@@ -8,7 +8,7 @@ from config import PROCESSED_DIR, REPORTS_DIR, default_model_path
 from inspection import export_model_stages
 from modeling import build_elo_leaderboard, train_model, save_training_result, load_training_result
 from prediction import predict_matchup
-from tuning import save_tuning_results, tune_elo_settings, tune_rolling_settings
+from tuning import save_tuning_results, tune_elo_settings, tune_model_grid, tune_rolling_settings
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
@@ -83,6 +83,21 @@ def parse_args() -> argparse.Namespace:
     tune_elo_parser.add_argument("--cv-splits", type=int, default=0)
     tune_elo_parser.add_argument("--refresh", action="store_true", help="Ignore cached nba_api and processed CSVs.")
     tune_elo_parser.add_argument("--output", type=Path, default=REPORTS_DIR / "elo_tuning_results.csv")
+
+    tune_grid_parser = subparsers.add_parser("tune-grid", help="Grid feature sets, feature modes, rolling settings, and Elo K values.")
+    tune_grid_parser.add_argument("--seasons", nargs="+", default=["2023-24", "2024-25", "2025-26"])
+    tune_grid_parser.add_argument("--season-types", nargs="+", choices=["Regular Season", "Playoffs"], default=["Regular Season", "Playoffs"])
+    tune_grid_parser.add_argument("--feature-sets", nargs="+", choices=["deltas", "full"], default=["deltas"])
+    tune_grid_parser.add_argument("--feature-modes", nargs="+", choices=["base", "full", "lean"], default=["base", "lean", "full"])
+    tune_grid_parser.add_argument("--rolling-windows", nargs="+", type=int, default=[10, 15, 20, 25])
+    tune_grid_parser.add_argument("--min-periods-grid", nargs="+", type=int, default=[5, 7, 10])
+    tune_grid_parser.add_argument("--elo-k-grid", nargs="+", type=float, default=[15, 20, 25])
+    tune_grid_parser.add_argument("--elo-playoff-k-grid", nargs="+", type=float, default=[25, 30, 35, 40])
+    tune_grid_parser.add_argument("--elo-home-advantage", type=float, default=65)
+    tune_grid_parser.add_argument("--elo-carryover", type=float, default=0.75)
+    tune_grid_parser.add_argument("--cv-splits", type=int, default=0)
+    tune_grid_parser.add_argument("--refresh", action="store_true", help="Ignore cached nba_api and processed CSVs.")
+    tune_grid_parser.add_argument("--output", type=Path, default=REPORTS_DIR / "model_grid_results.csv")
 
     elo_board_parser = subparsers.add_parser("elo-leaderboard", help="Export current Elo ratings after selected seasons.")
     elo_board_parser.add_argument("--seasons", nargs="+", default=["2022-23", "2023-24", "2024-25"])
@@ -248,6 +263,26 @@ def main() -> None:
         save_tuning_results(results, args.output)
         print(results)
         print(f"Saved Elo tuning results: {args.output}")
+        return
+
+    if args.command == "tune-grid":
+        results = tune_model_grid(
+            seasons=args.seasons,
+            feature_sets=args.feature_sets,
+            feature_modes=args.feature_modes,
+            rolling_windows=args.rolling_windows,
+            min_periods_values=args.min_periods_grid,
+            elo_k_values=args.elo_k_grid,
+            elo_playoff_k_values=args.elo_playoff_k_grid,
+            season_types=args.season_types,
+            elo_home_advantage=args.elo_home_advantage,
+            elo_carryover=args.elo_carryover,
+            cv_splits=args.cv_splits,
+            refresh=args.refresh,
+        )
+        save_tuning_results(results, args.output)
+        print(results)
+        print(f"Saved model grid results: {args.output}")
         return
 
     if args.command == "elo-leaderboard":

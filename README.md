@@ -87,6 +87,14 @@ python src/main.py tune-elo --seasons 2022-23 2023-24 2024-25 --feature-set delt
 
 This writes `reports/elo_tuning_results.csv`.
 
+To grid feature set, feature mode, rolling settings, regular-season Elo K, and playoff Elo K:
+
+```powershell
+python src/main.py tune-grid --seasons 2023-24 2024-25 2025-26 --season-types "Regular Season" Playoffs --feature-sets deltas full --feature-modes base lean full --rolling-windows 10 15 20 25 --min-periods-grid 5 7 10 --elo-k-grid 15 20 25 --elo-playoff-k-grid 25 30 35 40 --cv-splits 5
+```
+
+This writes `reports/model_grid_results.csv`.
+
 To export the Elo leaderboard without training a model:
 
 ```powershell
