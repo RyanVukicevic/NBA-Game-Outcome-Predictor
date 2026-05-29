@@ -16,6 +16,9 @@ def export_model_stages(
     feature_set: str = "deltas",
     feature_mode: str = "full",
     season_types: list[str] | None = None,
+    warmup_seasons: list[str] | None = None,
+    rolling_history: str = "same-season",
+    use_prior_season_features: bool = False,
     use_elo: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
@@ -25,8 +28,15 @@ def export_model_stages(
 ) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_logs = load_game_logs(seasons, season_types=season_types, refresh=refresh)
-    team_features = add_team_features(raw_logs, rolling_window=rolling_window, min_periods=min_periods)
+    all_seasons = list(dict.fromkeys([*(warmup_seasons or []), *seasons]))
+    raw_logs = load_game_logs(all_seasons, season_types=season_types, refresh=refresh)
+    team_features = add_team_features(
+        raw_logs,
+        rolling_window=rolling_window,
+        min_periods=min_periods,
+        rolling_history=rolling_history,
+        use_prior_season_features=use_prior_season_features,
+    )
     deltas = build_matchup_dataset(team_features, rolling_window=rolling_window, feature_set="deltas")
     full = build_matchup_dataset(team_features, rolling_window=rolling_window, feature_set="full")
 

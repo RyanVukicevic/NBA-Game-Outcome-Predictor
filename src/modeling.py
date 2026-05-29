@@ -34,6 +34,9 @@ class TrainingResult:
     min_periods: int
     feature_set: str
     feature_mode: str
+    rolling_history: str
+    use_prior_season_features: bool
+    warmup_seasons: list[str]
     use_elo: bool
     season_types: list[str]
     latest_elos: pd.DataFrame | None
@@ -61,6 +64,9 @@ def cache_slug(
     rolling_window: int,
     min_periods: int,
     season_types: list[str] | None = None,
+    warmup_seasons: list[str] | None = None,
+    rolling_history: str = "same-season",
+    use_prior_season_features: bool = False,
     use_elo: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
@@ -69,6 +75,13 @@ def cache_slug(
 ) -> str:
     season_part = "_".join(season.replace("-", "_") for season in seasons)
     slug = f"{season_part}_rw{rolling_window}_min{min_periods}"
+    if warmup_seasons:
+        warmup_part = "_".join(season.replace("-", "_") for season in warmup_seasons)
+        slug += f"_warmup_{warmup_part}"
+    if rolling_history != "same-season":
+        slug += f"_{rolling_history}"
+    if use_prior_season_features:
+        slug += "_prior"
     type_slug = season_type_slug(season_types)
     if type_slug != "regularseason":
         slug += f"_{type_slug}"
@@ -79,6 +92,10 @@ def cache_slug(
     return slug
 
 
+def season_start_years(seasons: list[str]) -> set[str]:
+    return {season.split("-")[0] for season in seasons}
+
+
 def load_or_build_model_frames(
     seasons: list[str],
     rolling_window: int,
@@ -86,6 +103,9 @@ def load_or_build_model_frames(
     feature_set: str,
     feature_mode: str = "full",
     season_types: list[str] | None = None,
+    warmup_seasons: list[str] | None = None,
+    rolling_history: str = "same-season",
+    use_prior_season_features: bool = False,
     use_elo: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
@@ -99,6 +119,9 @@ def load_or_build_model_frames(
         rolling_window=rolling_window,
         min_periods=min_periods,
         season_types=season_types,
+        warmup_seasons=warmup_seasons,
+        rolling_history=rolling_history,
+        use_prior_season_features=use_prior_season_features,
         use_elo=use_elo,
         elo_k=elo_k,
         elo_playoff_k=elo_playoff_k,
@@ -118,8 +141,15 @@ def load_or_build_model_frames(
             else None
         )
     else:
-        logs = load_game_logs(seasons, season_types=season_types, refresh=refresh)
-        team_games = add_team_features(logs, rolling_window=rolling_window, min_periods=min_periods)
+        all_seasons = list(dict.fromkeys([*(warmup_seasons or []), *seasons]))
+        logs = load_game_logs(all_seasons, season_types=season_types, refresh=refresh)
+        team_games = add_team_features(
+            logs,
+            rolling_window=rolling_window,
+            min_periods=min_periods,
+            rolling_history=rolling_history,
+            use_prior_season_features=use_prior_season_features,
+        )
         matchup_frame = build_matchup_frame(team_games, rolling_window=rolling_window)
         latest_elos = None
         if use_elo:
@@ -133,6 +163,12 @@ def load_or_build_model_frames(
             latest_elos.to_csv(latest_elos_path)
         team_games.to_csv(team_features_path, index=False)
         matchup_frame.to_csv(matchup_path, index=False)
+
+    target_years = season_start_years(seasons)
+    if warmup_seasons and "SEASON_ID" in matchup_frame.columns:
+        matchup_frame = matchup_frame[
+            matchup_frame["SEASON_ID"].astype(str).str[-4:].isin(target_years)
+        ].reset_index(drop=True)
 
     matchup_frame = add_interaction_features(matchup_frame, rolling_window=rolling_window)
     feature_names = select_feature_names(
@@ -170,6 +206,9 @@ def build_elo_leaderboard(
     feature_set: str = "deltas",
     feature_mode: str = "full",
     season_types: list[str] | None = None,
+    warmup_seasons: list[str] | None = None,
+    rolling_history: str = "same-season",
+    use_prior_season_features: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
     elo_home_advantage: float = 65,
@@ -183,6 +222,9 @@ def build_elo_leaderboard(
         feature_set=feature_set,
         feature_mode=feature_mode,
         season_types=season_types,
+        warmup_seasons=warmup_seasons,
+        rolling_history=rolling_history,
+        use_prior_season_features=use_prior_season_features,
         use_elo=True,
         elo_k=elo_k,
         elo_playoff_k=elo_playoff_k,
@@ -203,6 +245,9 @@ def train_model(
     feature_set: str = "deltas",
     feature_mode: str = "full",
     season_types: list[str] | None = None,
+    warmup_seasons: list[str] | None = None,
+    rolling_history: str = "same-season",
+    use_prior_season_features: bool = False,
     use_elo: bool = False,
     elo_k: float = 20,
     elo_playoff_k: float | None = None,
@@ -218,6 +263,9 @@ def train_model(
         feature_set=feature_set,
         feature_mode=feature_mode,
         season_types=season_types,
+        warmup_seasons=warmup_seasons,
+        rolling_history=rolling_history,
+        use_prior_season_features=use_prior_season_features,
         use_elo=use_elo,
         elo_k=elo_k,
         elo_playoff_k=elo_playoff_k,
@@ -251,6 +299,9 @@ def train_model(
         min_periods=min_periods,
         feature_set=feature_set,
         feature_mode=feature_mode,
+        rolling_history=rolling_history,
+        use_prior_season_features=use_prior_season_features,
+        warmup_seasons=warmup_seasons or [],
         use_elo=use_elo,
         season_types=season_types or ["Regular Season"],
         latest_elos=latest_elos,

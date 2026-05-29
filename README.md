@@ -63,6 +63,16 @@ Feature modes:
 - `--feature-mode full`: base plus all engineered interaction features
 - `--feature-mode lean`: a smaller handpicked interaction subset
 
+For early-season predictions, you can warm up features with previous seasons:
+
+```powershell
+python src/main.py train --seasons 2025-26 --warmup-seasons 2024-25 --season-types "Regular Season" Playoffs --feature-set deltas --feature-mode lean --rolling-window 10 --min-periods 1 --rolling-history carryover --use-prior-season-features --use-elo --elo-k 15 --elo-playoff-k 15 --elo-carryover 0.85 --cv-splits 5
+```
+
+- `--warmup-seasons` loads earlier games for feature/Elo history.
+- `--rolling-history carryover` lets rolling stats cross season boundaries.
+- `--use-prior-season-features` adds previous-season win rate and plus-minus summaries.
+
 ## Tune Rolling Settings
 
 Compare rolling-window and min-period combinations:

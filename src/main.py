@@ -13,9 +13,12 @@ from tuning import save_tuning_results, tune_elo_settings, tune_model_grid, tune
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--seasons", nargs="+", default=["2022-23", "2023-24", "2024-25"])
+    parser.add_argument("--warmup-seasons", nargs="*", default=[])
     parser.add_argument("--season-types", nargs="+", choices=["Regular Season", "Playoffs"], default=["Regular Season"])
     parser.add_argument("--rolling-window", type=int, default=10)
     parser.add_argument("--min-periods", type=int, default=5)
+    parser.add_argument("--rolling-history", choices=["same-season", "carryover"], default="same-season")
+    parser.add_argument("--use-prior-season-features", action="store_true")
     parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
     parser.add_argument("--feature-mode", choices=["base", "full", "lean"], default="full")
     parser.add_argument("--use-elo", action="store_true")
@@ -86,24 +89,30 @@ def parse_args() -> argparse.Namespace:
 
     tune_grid_parser = subparsers.add_parser("tune-grid", help="Grid feature sets, feature modes, rolling settings, and Elo K values.")
     tune_grid_parser.add_argument("--seasons", nargs="+", default=["2023-24", "2024-25", "2025-26"])
+    tune_grid_parser.add_argument("--warmup-seasons", nargs="*", default=[])
     tune_grid_parser.add_argument("--season-types", nargs="+", choices=["Regular Season", "Playoffs"], default=["Regular Season", "Playoffs"])
     tune_grid_parser.add_argument("--feature-sets", nargs="+", choices=["deltas", "full"], default=["deltas"])
     tune_grid_parser.add_argument("--feature-modes", nargs="+", choices=["base", "full", "lean"], default=["base", "lean", "full"])
     tune_grid_parser.add_argument("--rolling-windows", nargs="+", type=int, default=[10, 15, 20, 25])
     tune_grid_parser.add_argument("--min-periods-grid", nargs="+", type=int, default=[5, 7, 10])
+    tune_grid_parser.add_argument("--rolling-histories", nargs="+", choices=["same-season", "carryover"], default=["same-season"])
+    tune_grid_parser.add_argument("--prior-season-features-grid", nargs="+", type=int, choices=[0, 1], default=[0])
     tune_grid_parser.add_argument("--elo-k-grid", nargs="+", type=float, default=[15, 20, 25])
     tune_grid_parser.add_argument("--elo-playoff-k-grid", nargs="+", type=float, default=[25, 30, 35, 40])
     tune_grid_parser.add_argument("--elo-home-advantage", type=float, default=65)
-    tune_grid_parser.add_argument("--elo-carryover", type=float, default=0.75)
+    tune_grid_parser.add_argument("--elo-carryover-grid", nargs="+", type=float, default=[0.75])
     tune_grid_parser.add_argument("--cv-splits", type=int, default=0)
     tune_grid_parser.add_argument("--refresh", action="store_true", help="Ignore cached nba_api and processed CSVs.")
     tune_grid_parser.add_argument("--output", type=Path, default=REPORTS_DIR / "model_grid_results.csv")
 
     elo_board_parser = subparsers.add_parser("elo-leaderboard", help="Export current Elo ratings after selected seasons.")
     elo_board_parser.add_argument("--seasons", nargs="+", default=["2022-23", "2023-24", "2024-25"])
+    elo_board_parser.add_argument("--warmup-seasons", nargs="*", default=[])
     elo_board_parser.add_argument("--season-types", nargs="+", choices=["Regular Season", "Playoffs"], default=["Regular Season"])
     elo_board_parser.add_argument("--rolling-window", type=int, default=20)
     elo_board_parser.add_argument("--min-periods", type=int, default=7)
+    elo_board_parser.add_argument("--rolling-history", choices=["same-season", "carryover"], default="same-season")
+    elo_board_parser.add_argument("--use-prior-season-features", action="store_true")
     elo_board_parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
     elo_board_parser.add_argument("--feature-mode", choices=["base", "full", "lean"], default="full")
     elo_board_parser.add_argument("--elo-k", type=float, default=20)
@@ -145,6 +154,9 @@ def main() -> None:
             feature_set=args.feature_set,
             feature_mode=args.feature_mode,
             season_types=args.season_types,
+            warmup_seasons=args.warmup_seasons,
+            rolling_history=args.rolling_history,
+            use_prior_season_features=args.use_prior_season_features,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
@@ -165,6 +177,8 @@ def main() -> None:
             use_elo=args.use_elo,
             season_types=args.season_types,
             feature_mode=args.feature_mode,
+            rolling_history=args.rolling_history,
+            use_prior_season_features=args.use_prior_season_features,
         )
         result = train_model(
             seasons=args.seasons,
@@ -173,6 +187,9 @@ def main() -> None:
             feature_set=args.feature_set,
             feature_mode=args.feature_mode,
             season_types=args.season_types,
+            warmup_seasons=args.warmup_seasons,
+            rolling_history=args.rolling_history,
+            use_prior_season_features=args.use_prior_season_features,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
@@ -209,6 +226,9 @@ def main() -> None:
             feature_set=args.feature_set,
             feature_mode=args.feature_mode,
             season_types=args.season_types,
+            warmup_seasons=args.warmup_seasons,
+            rolling_history=args.rolling_history,
+            use_prior_season_features=args.use_prior_season_features,
             use_elo=args.use_elo,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
@@ -274,9 +294,12 @@ def main() -> None:
             min_periods_values=args.min_periods_grid,
             elo_k_values=args.elo_k_grid,
             elo_playoff_k_values=args.elo_playoff_k_grid,
+            elo_carryover_values=args.elo_carryover_grid,
             season_types=args.season_types,
+            warmup_seasons=args.warmup_seasons,
+            rolling_histories=args.rolling_histories,
+            use_prior_season_features_values=[bool(value) for value in args.prior_season_features_grid],
             elo_home_advantage=args.elo_home_advantage,
-            elo_carryover=args.elo_carryover,
             cv_splits=args.cv_splits,
             refresh=args.refresh,
         )
@@ -293,6 +316,9 @@ def main() -> None:
             feature_set=args.feature_set,
             feature_mode=args.feature_mode,
             season_types=args.season_types,
+            warmup_seasons=args.warmup_seasons,
+            rolling_history=args.rolling_history,
+            use_prior_season_features=args.use_prior_season_features,
             elo_k=args.elo_k,
             elo_playoff_k=args.elo_playoff_k,
             elo_home_advantage=args.elo_home_advantage,
@@ -313,6 +339,8 @@ def main() -> None:
             use_elo=args.use_elo,
             season_types=args.season_types,
             feature_mode=args.feature_mode,
+            rolling_history=args.rolling_history,
+            use_prior_season_features=args.use_prior_season_features,
         )
         if args.retrain or not model_in.exists():
             result = train_model(
@@ -322,6 +350,9 @@ def main() -> None:
                 feature_set=args.feature_set,
                 feature_mode=args.feature_mode,
                 season_types=args.season_types,
+                warmup_seasons=args.warmup_seasons,
+                rolling_history=args.rolling_history,
+                use_prior_season_features=args.use_prior_season_features,
                 use_elo=args.use_elo,
                 elo_k=args.elo_k,
                 elo_playoff_k=args.elo_playoff_k,

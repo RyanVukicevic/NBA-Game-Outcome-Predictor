@@ -34,6 +34,15 @@ def predict_matchup(result: TrainingResult, home: str, away: str, is_playoffs: b
         sample[f"away_{clean_name}"] = away_value
         sample[f"diff_{clean_name}"] = home_value - away_value
 
+    for column in ["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]:
+        if column in latest.columns:
+            clean_name = column.lower()
+            home_value = float(home_row[column]) if pd.notna(home_row[column]) else 0.0
+            away_value = float(away_row[column]) if pd.notna(away_row[column]) else 0.0
+            sample[f"home_{clean_name}"] = home_value
+            sample[f"away_{clean_name}"] = away_value
+            sample[f"diff_{clean_name}"] = home_value - away_value
+
     if getattr(result, "use_elo", False):
         if getattr(result, "latest_elos", None) is None:
             raise ValueError("This model expects Elo features, but no latest Elo ratings were saved.")

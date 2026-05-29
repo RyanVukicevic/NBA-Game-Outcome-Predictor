@@ -20,14 +20,22 @@ def add_team_features(
     game_logs: pd.DataFrame,
     rolling_window: int,
     min_periods: int = 5,
-    reset_each_season: bool = True,
+    rolling_history: str = "same-season",
+    use_prior_season_features: bool = False,
 ) -> pd.DataFrame:
     """
     Create team-level features before each game:
     IS_HOME, WIN, REST_DAYS, and ROLLING_* recent averages.
     """
+    if rolling_history not in {"same-season", "carryover"}:
+        raise ValueError("rolling_history must be either 'same-season' or 'carryover'")
+
     df = game_logs.copy()
     df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
+    if "SEASON_ID" in df.columns:
+        df["SEASON_YEAR"] = df["SEASON_ID"].astype(str).str[-4:]
+    else:
+        df["SEASON_YEAR"] = ""
     df["IS_HOME"] = df["MATCHUP"].str.contains(" vs. ", regex=False).astype(int)
     if "SEASON_TYPE" in df.columns:
         df["IS_PLAYOFFS"] = (df["SEASON_TYPE"] == "Playoffs").astype(int)
@@ -38,11 +46,12 @@ def add_team_features(
     for column in BOX_SCORE_COLUMNS:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
-    group_columns = ["TEAM_ID"]
-    if reset_each_season and "SEASON_ID" in df.columns:
-        group_columns = ["TEAM_ID", "SEASON_ID"]
+    if use_prior_season_features:
+        df = add_prior_season_features(df)
 
-    df = df.sort_values(group_columns + ["GAME_DATE", "GAME_ID"]).reset_index(drop=True)
+    group_columns = ["TEAM_ID", "SEASON_YEAR"] if rolling_history == "same-season" else ["TEAM_ID"]
+
+    df = df.sort_values(["TEAM_ID", "GAME_DATE", "GAME_ID"]).reset_index(drop=True)
     df["REST_DAYS"] = (
         df.groupby(group_columns)["GAME_DATE"].diff().dt.days.clip(lower=0, upper=5).fillna(3)
     )
@@ -57,9 +66,34 @@ def add_team_features(
     return df
 
 
+def add_prior_season_features(team_games: pd.DataFrame) -> pd.DataFrame:
+    if "SEASON_YEAR" not in team_games.columns:
+        return team_games
+
+    summaries = (
+        team_games.groupby(["TEAM_ID", "SEASON_YEAR"], as_index=False)
+        .agg(
+            PRIOR_SEASON_WIN=("WIN", "mean"),
+            PRIOR_SEASON_PLUS_MINUS=("PLUS_MINUS", "mean"),
+        )
+        .sort_values(["TEAM_ID", "SEASON_YEAR"])
+    )
+    summaries[["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]] = summaries.groupby("TEAM_ID")[
+        ["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]
+    ].shift(1)
+    summaries = summaries.dropna(subset=["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"])
+
+    return team_games.merge(
+        summaries,
+        on=["TEAM_ID", "SEASON_YEAR"],
+        how="left",
+    )
+
+
 def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.DataFrame:
     """Combine the two team rows for each NBA game into one home-vs-away row."""
     rolling_columns = [f"ROLLING_{rolling_window}_{column}" for column in BOX_SCORE_COLUMNS]
+    prior_columns = ["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]
     rows: list[dict[str, float | str | pd.Timestamp]] = []
 
     for game_id, game in team_games.groupby("GAME_ID", sort=False):
@@ -95,6 +129,15 @@ def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.Dat
             row[f"home_{clean_name}"] = home_value
             row[f"away_{clean_name}"] = away_value
             row[f"diff_{clean_name}"] = home_value - away_value
+
+        for column in prior_columns:
+            if column in team_games.columns and pd.notna(home_row.get(column)) and pd.notna(away_row.get(column)):
+                clean_name = column.lower()
+                home_value = float(home_row[column])
+                away_value = float(away_row[column])
+                row[f"home_{clean_name}"] = home_value
+                row[f"away_{clean_name}"] = away_value
+                row[f"diff_{clean_name}"] = home_value - away_value
 
         rows.append(row)
 
@@ -207,6 +250,8 @@ def select_feature_names(
             "playoff_x_diff_elo_pre",
             "playoff_x_diff_rest_days",
             "diff_elo_pre_x_diff_plus_minus",
+            "diff_prior_season_win",
+            "diff_prior_season_plus_minus",
         }
         keep_suffixes = {
             "_plus_minus",

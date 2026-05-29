@@ -50,10 +50,14 @@ def default_model_path(
     use_elo: bool = False,
     season_types: list[str] | None = None,
     feature_mode: str = "full",
+    rolling_history: str = "same-season",
+    use_prior_season_features: bool = False,
 ) -> Path:
     elo_part = "_elo" if use_elo else ""
     type_part = ""
     if season_type_slug(season_types) != "regularseason":
         type_part = f"_{season_type_slug(season_types)}"
     mode_part = "" if feature_mode == "full" else f"_{feature_mode}"
-    return PROJECT_ROOT / "models" / f"game_predictor_{feature_set}{elo_part}{type_part}{mode_part}_rw{rolling_window}_min{min_periods}.joblib"
+    history_part = "" if rolling_history == "same-season" else f"_{rolling_history}"
+    prior_part = "_prior" if use_prior_season_features else ""
+    return PROJECT_ROOT / "models" / f"game_predictor_{feature_set}{elo_part}{type_part}{mode_part}{history_part}{prior_part}_rw{rolling_window}_min{min_periods}.joblib"
