@@ -1,0 +1,21 @@
+
+
+
+TUNABLE PARAMS
+
+number of seasons  / which seasons used
+
+rolling window size
+min period size 
+
+raw features + deltas / deltas only
+
+
+elo:
+whether to use elo at all
+elo_k - controls how much ratings move after each game
+carryover - regression toward 1500 (baseline) at start of new season
+home_adv - added elo to a team just for being home
+
+
+threshold for picking home_win / home_loss (default 0.5)

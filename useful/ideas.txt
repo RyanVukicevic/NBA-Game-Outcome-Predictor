@@ -1,0 +1,28 @@
+
+
+add playoffs on top of reg szn or do playoffs only model
+
+random forest/xgboost
+
+market odds
+
+elo system
+
+mlp nn
+
+add injuries/starts however possible
+
+
+
+
+
+
+
+done 5/28
+
+rolling window / min period config with tuning.py
+feature importance
+learned log loss, brier score more, calibration curve ish
+elo system added, elo lb made
+
+

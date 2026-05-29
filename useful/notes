@@ -1,0 +1,213 @@
+
+
+NBA CONFERENCE/DIVISION STRUCTURE
+
+30 teams
+2 conferences, 15 teams per conference. east and west
+6 divisions, 3 per conference, 5 teams per divisions. 
+
+divisions by conference
+east: atlantic, central, southeast
+west: northwest, pacific, southeast
+
+________________________________________________________________________
+
+BASKETBALL JARGON
+
+"box score" - table of stats from a game, lists things like points
+rebounds, assists, steaks, blocks, etc. for teams/players
+
+"field goal" - any normal shot from the floor, either 2/3 points
+not including free throws but including layups, dunks, midrange
+jumpers, 3-pointers
+
+________________________________________________________________________
+
+DATA EXPLANATIONS
+
+each row in games df is from the home team's pov, so "win" refers to
+if the home team won, 1=home win, 0=away win
+each row is mirrored to also be from the away team's pov
+
+"plus_minus" stat means how much the team outscored the opponent in
+that game
+plus_minus = team_points - opponent_points, and since each row is
+mirrored, So if BOS beats NYK 112-104:
+BOS row: PLUS_MINUS = +8
+NYK row: PLUS_MINUS = -8
+
+________________________________________________________________________
+
+MODEL EXPLANATIONS
+
+"rolling window" - window for which avg stats from prior games should
+be calculated for a team, a tunable parameter
+used because team's performance is temporal, recency matters most
+
+"min period" - early in the season, teams may not have rolling_window
+number of games to calculate averages from, so the min_periods param is
+the minimum acceptable value where we can calculate averages 
+
+example: rolling_window=10, min_periods=5
+early in the season 
+previous 0-4 games: rolling average = NaN, skip this game for training
+previous 5-9 games: average however many previous games exist
+previous 10+ games: average previous 10 games
+
+________________________________________________________________________
+
+GENERAL THINGS LEARNED
+
+___________________________________________
+
+TEMPORAL CV
+
+with temporal data, train/test split should not be shuffled
+so the older data should be train, and newer data be test
+because this also mirrors what the model will do during inference
+also random shuffle can leak future information into the past
+
+also temporal cv trains with each new fold, so fold n uses the 
+data from folds 1 to n-1, which makes sense why accuracy tends
+to increase as folds do, more data to train on.
+but temporal cv still useful for seeing if diff "eras" had 
+larger difficulty predicting, distribution shift, etc
+
+___________________________________________
+
+BRIER SCORE: 
+
+brier score is standard for probabilistic, temporal prediction like
+in contexts such as sports prediction as it a
+sum of (predicted_probability - actual_result)^2, so want to minimize this
+
+___________________________________________
+
+ROC/AUC:
+
+measures ranking ability, if in game A, home wins, and game B, home loses
+then good model should usually say P(home wins Game A) > P(home wins Game B)
+
+AUC asks, across many pairs of one positive example and one negative example:
+How often did the positive one receive the higher score?
+where positive = home_win = 1, negative = home_lose = 0
+
+So ROC/AUC is saying:
+Do actual home wins tend to receive higher predicted 
+probabilities than actual home losses?
+
+ROC Axes
+x-axis: FPR = false positive rate
+y-axis: TPR = true positive rate
+
+TPR, true positive rate:
+Of games where the home team actually won,
+what fraction did we correctly predict as home wins?
+Also called recall/sensitivity.
+
+FPR, false positive rate:
+Of games where the home team actually lost,
+what fraction did we incorrectly predict as home wins?
+So each threshold gives one point:
+
+(threshold -> FPR, TPR)
+A good model gets high TPR without high FPR.
+
+Bad/random model:
+as TPR goes up, FPR goes up at about the same rate
+AUC around 0.50
+
+Good model:
+TPR rises faster than FPR
+AUC above 0.50
+
+Why Use TPR/FPR?
+Because they show the tradeoff between:
+catching actual home wins
+vs
+mistakenly calling home wins when home team loses
+Threshold 0.50 is only one possible tradeoff. ROC/AUC checks whether 
+the model’s probability ordering is useful across all possible tradeoffs.
+
+
+___________________________________________
+
+LOG LOSS 
+
+ml setups use log base e remember
+
+if actual = 1:
+    loss = -log(predicted_probability)
+    
+if actual = 0:
+    loss = -log(1 - predicted_probability)
+
+so good guesses makes for -log(close to 1) = small loss
+and bad guesses makes for -log(close to 0) = big loss
+
+x       -log(x)
+0.0     infinity / undefined
+0.1     2.3026
+0.2     1.6094
+0.3     1.2040
+0.4     0.9163
+0.5     0.6931
+0.6     0.5108
+0.7     0.3567
+0.8     0.2231
+0.9     0.1054
+1.0     0.0000
+
+since -log(1)=0, -log(0)=infinity, -log(0.5)=.693 and between 
+(0,1] -log(x) shrinkage looks quadratic-ish as input grows 
+
+as u go from x=1 to x=0, y grows faster, eventually shoots straight
+up to infinity, displaying an increasing penalty as pred strays 
+further from actual the loss will grow faster and faster, to penalize
+the model being more confident in the wrong direction
+
+as input of -log(x) grows, output shrinks
+conditions make it so that ideal output will shrink the -log if 
+pred close to actual
+
+across all games, sklearn does mean(loss_1, loss_2, loss_3, ...)
+
+each game gets probability, but what about many games, as we predict:
+For many games, the model assigns probabilities to each actual outcome:
+
+0.80, 0.60, 0.75, 0.55, ...
+The likelihood is the product, want high likelihood (high when what your
+model says alligns with reality, so want to maximize)
+
+0.80 * 0.60 * 0.75 * 0.55 * ...
+Products of many probabilities get tiny and annoying. Logs turn products into sums:
+
+log(a * b * c) = log(a) + log(b) + log(c)
+So instead of maximizing product likelihood, we maximize sum log likelihood.
+
+but log((0,1])) =  negative number, so "maximizing" means make less negative,
+confusing and weird, so -log() makes all outputs positive, and minimizing is easy
+just want entire quantity closer to 0
+
+so maximizing the log likelihood = minimizing the negative log likelihood
+which is why the -log(x) exists and can be used, minimizing -log is same 
+as maximizing log likelihood, since log is always increasing, same as
+maximizing likelihood 
+
+
+
+
+
+
+
+
+________________________________________________________________________
+
+
+
+
+
+
+
+
+
