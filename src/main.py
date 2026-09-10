@@ -8,6 +8,7 @@ from config import PROCESSED_DIR, REPORTS_DIR, default_model_path
 from inspection import export_model_stages
 from modeling import build_elo_leaderboard, train_model, save_training_result, load_training_result
 from prediction import predict_matchup
+from production import CONFIG_PATH, run_production_predictions, run_sample_predictions
 from tuning import save_tuning_results, tune_elo_settings, tune_model_grid, tune_rolling_settings
 
 
@@ -33,6 +34,15 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train and use an NBA game predictor.")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    upcoming_parser = subparsers.add_parser("upcoming", help="Predict upcoming NBA games from production_config.txt.")
+    upcoming_parser.add_argument("--config", type=Path, default=CONFIG_PATH)
+
+    sample_parser = subparsers.add_parser("sample", help="Show production-format predictions for already-played games.")
+    sample_parser.add_argument("--config", type=Path, default=CONFIG_PATH)
+    sample_parser.add_argument("--season", default=None, help="Season label, e.g. 2025-26. Defaults to current NBA season.")
+    sample_parser.add_argument("--season-type", choices=["Regular Season", "Playoffs"], default="Playoffs")
+    sample_parser.add_argument("--limit", type=int, default=25)
 
     train_parser = subparsers.add_parser("train", help="Train and evaluate the model.")
     add_common_args(train_parser)
@@ -119,6 +129,7 @@ def parse_args() -> argparse.Namespace:
     elo_board_parser.add_argument("--min-periods", type=int, default=7)
     elo_board_parser.add_argument("--rolling-history", choices=["same-season", "carryover"], default="same-season")
     elo_board_parser.add_argument("--use-prior-season-features", action="store_true")
+    elo_board_parser.add_argument("--prior-decay-games", type=int, default=30)
     elo_board_parser.add_argument("--feature-set", choices=["deltas", "full"], default="deltas")
     elo_board_parser.add_argument("--feature-mode", choices=["base", "full", "lean"], default="full")
     elo_board_parser.add_argument("--elo-k", type=float, default=20)
@@ -129,16 +140,7 @@ def parse_args() -> argparse.Namespace:
     elo_board_parser.add_argument("--output", type=Path, default=REPORTS_DIR / "elo_leaderboard.csv")
 
     if len(sys.argv) == 1:
-        parser.print_help()
-        print()
-        print("Examples:")
-        print("  python src/main.py inspect --seasons 2023-24 2024-25")
-        print("  python src/main.py train --seasons 2022-23 2023-24 2024-25 --cv-splits 5")
-        print("  python src/main.py tune --seasons 2022-23 2023-24 2024-25")
-        print("  python src/main.py tune-elo --seasons 2022-23 2023-24 2024-25")
-        print("  python src/main.py elo-leaderboard --seasons 2022-23 2023-24 2024-25")
-        print("  python src/main.py predict --home BOS --away NYK")
-        sys.exit(0)
+        sys.argv.append("upcoming")
 
     return parser.parse_args()
 
@@ -150,6 +152,19 @@ def print_metrics(metrics: dict[str, float]) -> None:
 
 def main() -> None:
     args = parse_args()
+
+    if args.command == "upcoming":
+        run_production_predictions(args.config)
+        return
+
+    if args.command == "sample":
+        run_sample_predictions(
+            config_path=args.config,
+            season=args.season,
+            season_type=args.season_type,
+            limit=args.limit,
+        )
+        return
 
     if args.command == "inspect":
         paths = export_model_stages(

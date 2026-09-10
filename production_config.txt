@@ -1,0 +1,30 @@
+# Production defaults used when running `python src/main.py upcoming`.
+#
+# seasons=auto_last_3 means the app picks the current NBA season plus the two
+# prior seasons from today's date, so this does not need manual yearly edits.
+seasons=auto_last_3
+season_types=Regular Season,Playoffs
+
+rolling_window=10
+min_periods=1
+rolling_history=same-season
+use_prior_season_features=false
+prior_decay_games=30
+
+feature_set=deltas
+feature_mode=lean
+
+use_elo=true
+elo_k=15
+elo_playoff_k=15
+elo_home_advantage=65
+elo_carryover=0.65
+
+upcoming_days=90
+retrain=false
+refresh=false
+
+# Optional CSV with columns:
+# home_team,away_team,home_odds,away_odds
+# Odds should be American odds, e.g. -140 or +120.
+betting_lines_csv=

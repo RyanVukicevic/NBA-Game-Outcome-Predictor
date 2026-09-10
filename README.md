@@ -6,11 +6,44 @@ The current predictor uses team game logs, builds rolling pre-game team features
 
 ## Setup
 
-Install Python 3.10+, then:
+Install Python 3.10+ (this PC uses Python 3.12), then create a project environment:
 
 ```powershell
-pip install -r requirements.txt
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 ```
+
+In VS Code, open `src/demo.ipynb`, select the `.venv` or Python 3.12 kernel,
+and choose **Run All**. The tour covers API lookups, cached data, rolling features,
+Elo, training, holdout and walk-forward evaluation, calibration plots, small tuning
+runs, earlier experiment reports, model save/load, odds conversion, and live predictions.
+It writes its outputs to `reports/demo/` and its model to `models/demo.joblib`.
+The final live lookup requires internet; set `RUN_LIVE=False` to skip it.
+Set `RUN_SMALL_TUNING=False` for a shorter tour. Restart the kernel after editing
+imported source modules.
+
+The same dependencies are also installed in this PC's normal Python 3.12. To run
+without a virtual environment, select that kernel, or use this terminal command:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" src/main.py upcoming
+```
+
+To install/update that interpreter's dependencies:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pip install -r requirements-dev.txt
+```
+
+To run commands without activating the environment (or changing PowerShell policy):
+
+```powershell
+.\.venv\Scripts\python.exe src/main.py upcoming
+```
+
+Use `.\.venv\Scripts\python.exe` in place of `python` in the commands below.
+NBA data downloads and schedule lookups need internet; existing cached seasons
+can be used offline.
 
 ## Inspect DataFrames
 
@@ -129,6 +162,48 @@ The older `python src/nba_game_predictor.py ...` command still works as a wrappe
 
 The first run calls NBA.com through `nba_api` and writes cached CSVs under `data/raw/`. Later runs reuse those files unless you pass `--refresh`.
 Engineered team and matchup DataFrames are also cached under `data/processed/cache/`, so rerunning the same seasons/window with `--feature-set deltas` and then `--feature-set full` should be faster after the first run.
+
+## Production Upcoming Predictions
+
+To run the production predictor with the saved settings in `production_config.txt`:
+
+```powershell
+python src/main.py upcoming
+```
+
+The `upcoming` command predicts upcoming NBA games using the production config. `seasons=auto_last_3` automatically picks the current NBA season plus the two prior seasons from today's date, so the backend does not need yearly season edits.
+
+The default search is 90 days ahead (`upcoming_days=90`). Output prints the current
+date, horizon, and end date before fetching schedules. Searches crossing October
+query both seasons. Preseason, exhibitions, completed games, and opponents outside
+the NBA are excluded. All returned matchups use the same latest model snapshot;
+future team form and roster changes are not projected.
+
+To update production data and rebuild its saved model, set both `retrain=true`
+and `refresh=true` for a run, then return them to `false` to reuse the cache.
+Setting `refresh=true` alone does not refresh an already-loaded model.
+
+The current production settings are:
+
+- `feature-set=deltas`
+- `feature-mode=lean`
+- `rolling-window=10`
+- `min-periods=1`
+- `use-elo=true`
+- `elo-k=15`
+- `elo-playoff-k=15`
+- `elo-home-advantage=65`
+- `elo-carryover=0.65`
+
+Prediction confidence is always shown for the predicted winner, so it is always at least 50%. Optional betting-line comparison can be added with a CSV path in `production_config.txt`; use columns `home_team`, `away_team`, `home_odds`, and `away_odds` with American odds.
+
+To preview the output format during the offseason, run predictions against already-played games:
+
+```powershell
+python src/main.py sample --season 2025-26 --season-type Playoffs --limit 20
+```
+
+This is useful for seeing the table shape, but it is not a leakage-free historical backtest because the production model may already include those games in its training data.
 
 ## Model Notes
 

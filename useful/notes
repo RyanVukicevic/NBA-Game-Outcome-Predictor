@@ -12,6 +12,27 @@ west: northwest, pacific, southeast
 
 ________________________________________________________________________
 
+NBA SCHEDULE AND PHASES 
+
+full year schedule released August of that year, so 2025-2026
+had games released august 2025
+
+regular season: october - april, 82 games per team
+
+play-in tournament: april
+    1-6 seeds in each conference make playoffs, 7-10 do play-in
+    7 vs. 8, 9 vs. 10, loser of 7 vs. 8 plays winner of 9 vs. 10
+    only 2 teams per conference advance, bc bracket has 8 
+    teams per conference on either side 
+
+playoffs: april - may
+
+finals: june
+
+3 months downtime then, july, august, september
+
+________________________________________________________________________
+
 BASKETBALL JARGON
 
 "box score" - table of stats from a game, lists things like points
@@ -128,7 +149,6 @@ vs
 mistakenly calling home wins when home team loses
 Threshold 0.50 is only one possible tradeoff. ROC/AUC checks whether 
 the model’s probability ordering is useful across all possible tradeoffs.
-
 
 ___________________________________________
 

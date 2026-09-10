@@ -31,6 +31,7 @@ class TrainingResult:
     model: Pipeline
     feature_names: list[str]
     latest_team_features: pd.DataFrame
+    seasons: list[str]
     rolling_window: int
     min_periods: int
     feature_set: str
@@ -311,6 +312,7 @@ def train_model(
         model=model,
         feature_names=matchup_data.feature_names,
         latest_team_features=latest_features_by_team(team_games, rolling_window=rolling_window),
+        seasons=seasons,
         rolling_window=rolling_window,
         min_periods=min_periods,
         feature_set=feature_set,

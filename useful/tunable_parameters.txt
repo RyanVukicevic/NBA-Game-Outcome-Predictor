@@ -20,4 +20,7 @@ carryover - regression toward 1500 (baseline) at start of new season
 home_adv - added elo to a team just for being home
 
 
+feature interaction terms, which ones and which to use
+
+
 threshold for picking home_win / home_loss (default 0.5)
