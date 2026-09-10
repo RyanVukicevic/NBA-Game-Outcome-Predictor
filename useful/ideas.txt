@@ -1,5 +1,332 @@
 
 
+PROJECT ROADMAP - September 9, 2026
+=================================
+
+Purpose: a reproducible NBA moneyline forecasting and betting-research tool,
+eventually hosted on a website, with honest forward performance tracking.
+This is a plan, not a claim that the current model has a profitable edge.
+The original scratch ideas are preserved at the end.
+
+1. WHAT IS RUNNING TODAY
+-----------------------
+production_config.txt currently selects:
+- Logistic regression with standardized inputs, max_iter=1000,
+  class_weight="balanced" (src/modeling.py: make_model).
+- feature_set=deltas; feature_mode=lean. These are separate controls:
+  feature_set is deltas/full, while feature_mode is base/lean/full.
+- rolling_window=10, min_periods=1, rolling_history=same-season.
+- Regular Season + Playoffs; auto_last_3 seasons, currently 2023-24 through
+  2025-26. No production warmup season or prior-season features enabled.
+- Elo enabled: K=15, playoff K=15, home advantage=65, carryover=0.65.
+- 90-day schedule search, retrain=false, refresh=false. Odds CSV unset.
+- Odds currently affect optional market comparison only, NOT model inputs.
+- Saved model weights and team snapshots are reused until rebuilding.
+
+2. WHAT THE SAVED EXPERIMENTS ACTUALLY SUPPORT
+-------------------------------------------
+Latest demo, same three seasons and 777 holdout games:
+  lean / window 10: accuracy 68.08%, log loss 0.5888.
+  base / window 10: accuracy 69.11%, log loss 0.5836.
+  lean / window 20: accuracy 69.50%, log loss 0.5865.
+In reports/demo/tuning_grid.csv, date-based walk-forward means are:
+  base: accuracy 67.06%, log loss 0.6148, Brier 0.21304.
+  lean: accuracy 66.70%, log loss 0.6258, Brier 0.21279.
+Base wins accuracy/log loss here, but not every metric. The rolling comparison
+uses row-based temporal CV, so do not compare its CV score directly against
+the grid's walk-forward score. Same holdout comparisons remain informative.
+Changing K from 15 to 20 gave mixed, tiny changes, not a convincing improvement.
+
+Historical reports:
+- model_grid_2025_26_warmup_small_cv.csv favors lean, window 10/min 1,
+  K/playoff K 15, carryover .65: 72.09% holdout on only 258 games,
+  CV mean accuracy 66.54%, CV mean log loss .6237.
+- model_grid_smoke.csv contains 73.80% on 229 holdout games with lean,
+  window 20/min 7, K20/playoff K30. It has no CV and is not proof of superiority.
+- Old experiments use different data, coverage, code, and validation settings.
+  Several reports omit seasons or feature-mode metadata. Do not rank all files
+  together as if they were one controlled experiment.
+- With lean mode, deltas/full can select identical columns because lean keeps
+  a restricted difference-based list (src/features.py). Deduplicate feature
+  signatures before spending search budget on equivalent configurations.
+
+Recommendation: preserve today's lean model as the reference. First challenger:
+base/deltas, window 10/min 1, same seasons and Elo. Also test lean/window 20.
+Do not combine individually promising changes and call the result validated.
+No automatic production setting change is authorized by this planning note.
+
+3. FIX FORECAST VALIDITY BEFORE ADDING MODEL COMPLEXITY
+----------------------------------------------------
+- Separate evaluation fitting from deployment fitting. train_model currently
+  returns the estimator fit on only the first 80%, even though the returned
+  snapshots describe the full history. Keep holdout scores from the evaluation
+  model, then refit a separate deployment estimator on all eligible completed
+  games up to its training cutoff. Never score that refit on its training games.
+- latest_features_by_team selects the last pre-game rolling row. This excludes
+  the most recently completed game's box score. Build an explicit as-of feature
+  builder for a new matchup using all results known before prediction time.
+- Replace hardcoded three-day rest for both teams with actual schedule-derived
+  rest. Define game date, tipoff timestamp, final-status and ingestion cutoffs.
+- Update snapshots when new games become final, independently from retraining
+  model weights. Re-running with no new data should reproduce the same result.
+- Cache keys/metadata must include source freshness/content hashes, feature
+  version, schema version, seasons, and configuration. Current caches can go
+  stale when CSVs or feature code change; model files lack complete provenance.
+- Whole-date splits, plus final-status/available-at cutoffs, before fitting
+  scalers, imputers, model selection, and probability calibration.
+- Audit Elo initialization across seasons and min-period filtering: Elo should
+  receive every eligible completed game, even if rolling features are not yet
+  available for that game. Current Elo is built after matchup filtering.
+- Evaluate balanced vs unweighted logistic regression. Class balancing is not
+  automatically appropriate for estimating natural win probabilities.
+- Explicitly classify regular season, play-in, playoffs, exhibitions and status
+  using provider fields/IDs. Text-label heuristics and dates alone are fragile.
+
+4. A CONTROLLED MODEL COMPARISON
+------------------------------
+Pre-register evaluation dates, horizons, metrics, search budget and baselines.
+Use rolling-origin outer evaluation with inner chronological tuning/calibration.
+Keep the latest untouched period or a future live season as final assessment;
+2025-26 has already been explored and is no longer an untouched test season.
+Fit every transformation inside each training fold. Never use closing odds or
+later injury knowledge in a prediction made earlier. Group every snapshot of
+one game in the same split; many snapshots do not create many independent games.
+
+Baselines: constant home win rate, simple Elo probability, current logistic,
+and bookmaker probability at the SAME time horizon. Closing odds are a separate
+benchmark, not a fair same-information competitor for a two-week prediction.
+
+First bounded grid: base/lean x windows 10/20 x min 1/5, fixed Elo and seasons.
+Compare on identical eligible dates/games; report coverage separately because
+larger min_periods remove difficult early-season games. Also score all-game
+coverage with a defined early-season fallback. Then regularization C and
+class_weight, followed by Elo K 10/15/20, playoff K15/25, carryover .5/.65/.85.
+Try recent 2/3/5 seasons and recency weights, only where history exists. Add
+multi-window or exponentially weighted form as a separate feature experiment.
+Tune sequentially with a bounded budget rather than an enormous Cartesian grid.
+
+Model order:
+1. Calibrated regularized logistic regression and plain Elo.
+2. HistGradientBoosting (already in sklearn), then a bounded XGBoost/CatBoost
+   comparison if worthwhile. Shallow trees, regularization, temporal validation.
+3. Random forest as a comparator; a single decision tree for interpretation.
+4. Blend complementary models using only chronological out-of-fold predictions.
+5. Small MLP with regularization/early stopping as an experiment. Deep networks
+   become more plausible with substantially richer player/possession data.
+More nonlinear capacity is not automatically useful on a few thousand games.
+
+Calibration: sigmoid/Platt, isotonic only with enough independent calibration
+data, or a regularized calibration layer fitted on an earlier validation block.
+Use accuracy, log loss, Brier, calibration plots with counts, ROC AUC; do not
+choose a constant but calibrated forecast without checking discrimination.
+Report uncertainty with paired resampling by date/block and season robustness.
+With about 777 games, one percentage point is only about eight outcomes.
+
+5. FEATURE PRIORITIES
+--------------------
+First: correct rest, back-to-backs, 3-in-4 nights, travel/time zones, schedule
+strength and opponent-adjusted net rating, pace-adjusted efficiency, home/away
+form, multiple form horizons, and early-season prior strength.
+Next: timestamped injuries, expected starters, expected minutes and player
+impact, roster continuity/trades, lineup combinations. Store publication and
+ingestion times; historical backfilled injury tables can leak later knowledge.
+Test playoff interactions with enough data; a standalone playoff model has a
+small sample and should be compared against a pooled/shrunk model.
+Every addition needs an ablation on the same held-out events and horizons.
+
+6. ACCURACY, CEILING, AND WHAT SUCCESS MEANS
+-----------------------------------------
+There is no universal industry accuracy requirement for NBA moneyline models.
+Sample, season, favorite strength, timing, and game selection change accuracy.
+Our repeated CV results are roughly 65-67%, holdout about 68-70%; old small
+holdouts above 73% should not be advertised as expected live performance.
+Measure the same-horizon market-favorite baseline before claiming an advance.
+Spread/total bets at roughly even prices are a different task from moneyline.
+
+No evidence supports a numerical ceiling for this project. Even a perfectly
+informed probability model loses some games. If true win probabilities were
+known, optimal binary accuracy would average max(p, 1-p) over the evaluated
+games; fitting a model does not reveal those true probabilities. Choosing only
+heavy favorites can inflate accuracy while losing money at their offered odds.
+Success: stable out-of-time probability quality, then forward evidence of
+positive net value under executable prices, enough coverage, and acceptable
+drawdowns. Never promise that the model is always right.
+
+7. IMMUTABLE PREDICTION HISTORY: WHICH FORECAST COUNTS?
+----------------------------------------------------
+Store EVERY forecast as a new record. Never replace yesterday's forecast with
+today's. The website's latest view is a query, not a destructive update.
+
+Forecast fields: prediction_id, provider game_id, internal game_id, issued_at
+(UTC), scheduled_tipoff_at_issue, horizon_minutes, home/away probability,
+model_version, code_commit, feature_version, training_cutoff, data_cutoff,
+input_snapshot_id/hash, odds_snapshot_id, run_id, status and failure reason.
+Also record source_published_at and received_at where available.
+
+Choose an official policy BEFORE results are known: proposed primary report is
+the latest valid forecast at or before T-60 minutes, no more than 15 minutes
+older than that target. If none exists, mark missed coverage, not a later fill.
+Separate reports at T-14d, T-7d, T-24h and T-60m. Never pick the best forecast
+after seeing the winner. One scored forecast per game per horizon/model policy.
+Track schedule revisions, postponements and cancellations explicitly. Freeze
+the schedule revision used for a decision and retain amended policies/results.
+
+Display forecast evolution and explanation for change: newly finished game,
+injury/lineup update, price movement, schedule change, or model deployment.
+Freeze model version during movement-analysis experiments to avoid confounding
+price effects with a new estimator. Distinguish model probability change from
+edge change caused only by a changing offered price.
+
+Bet decisions belong in a SEPARATE immutable ledger: chosen snapshot, market,
+selection, sportsbook, offered odds, quote time, decision time, stake, policy
+version, accepted odds/fill time for real bets, and subsequent settlement.
+Historical/paper suggested bets are never labeled as actually placed bets.
+Changing tomorrow's forecast does not rewrite yesterday's accepted wager.
+
+8. SCHEDULED COLLECTION AND HOSTING
+---------------------------------
+Use actual provider game IDs, scheduled tipoff times and game status rather
+than assuming games occur on fixed weekdays. Store UTC; show user local time.
+Initial horizon policy (proposal, tune frequency to budget/provider latency):
+  14 to 3 days out: every 6 hours (four evenly spaced checks per day).
+  72 to 6 hours out: every hour.
+  Final 6 hours: every 15 minutes; explicitly attempt T-60m and T-15m.
+  Stop pre-game issuance at tipoff; live betting is a separate future product.
+No odds two weeks out is normal: keep a stats-only forecast, no bet signal.
+The 90-day calendar can show exploratory forecasts without implying tradable
+prices. Poll league-wide endpoints where possible; batch events and cache.
+
+Collect fresh final results daily; recompute feature snapshots on completion;
+run weight retraining weekly initially, with validation gates. Trigger extra
+prediction refreshes on meaningful data changes where source access permits.
+Set rate-limit budgets, retry/backoff, locks, idempotency keys, stale-data flags,
+alerts and audit logs. Retry failures without duplicating records or bets.
+
+Architecture: scheduled worker -> provider ingestion -> as-of features ->
+versioned model -> persistent SQL database -> read-only API -> website.
+Start SQLite locally and migrate to managed PostgreSQL for hosting/concurrency.
+Separate training jobs from web requests; the website reads persisted results.
+Select hosting only after deciding budget, provider licensing and required
+scheduler reliability. Keys stay server-side, never in Git or browser code.
+
+Core tables: games + schedule revisions, results + settlement revisions,
+data snapshots, odds snapshots, models, prediction runs, predictions,
+decision policies, paper bets, actual bets (only with explicit future scope).
+Website views: upcoming games; game history chart; model-vs-market probability;
+price/edge over time; performance by horizon/model/season; coverage/freshness.
+
+9. WHETHER TO INCLUDE ODDS
+-------------------------
+Maintain three labeled forecasts for controlled comparison:
+A. Stats-only model: an independent basketball estimate.
+B. Market-only baseline: contemporaneous normalized implied probability.
+C. Market-aware model: stats plus the odds available at that exact timestamp.
+Potentially blend A and B using historical chronological predictions.
+Never feed a current/closing quote to a historical forecast before that quote
+was available. Horizon-specific models/calibrators may be required.
+
+Store sportsbook, market, selection, decimal odds, bookmaker update timestamp,
+received timestamp, event mapping, suspension/availability and scheduled tipoff.
+For two-way moneyline quotes at the same book/time, q_i = 1/decimal_odds_i;
+normalize q_i by their sum for a simple de-vig estimate. This is an approximation.
+Do not build de-vig probabilities by mixing each side's best price from different
+books. Use actual executable individual-book prices for betting EV.
+
+Odds movement features: opening-to-current change, changes over 1h/6h/24h,
+cross-book dispersion, quote age, market consensus, time to tipoff, and known
+lineup changes. All must use only prior observations. Movement may reflect
+information, liquidity or book risk; it is not automatically a profitable signal.
+Test incremental value over CURRENT market probability rather than assuming
+price movement implies insider knowledge or dictates a bet.
+
+10. BET SIGNALS AND POSITION SIZING
+---------------------------------
+Evaluate BOTH teams, not only the predicted winner. An underdog can be the
+positive-value selection even if the favorite remains more likely to win.
+For decimal odds d and estimated win probability p:
+  break-even p = 1/d
+  expected net return per unit stake = p*d - 1
+Example: p=.60 at -150 (d=1.6667) is approximately break-even; p=.60 at
++110 (d=2.10) has estimated EV +26%, assuming p is correct. A price matters.
+Distinguish probability edge vs normalized market probability from actual EV.
+
+Suggested UI: win probability, offered odds/book/time, break-even probability,
+estimated EV per $100, uncertainty/data quality, and decision label:
+  No price / stale data / pass / watch / qualified paper bet.
+Later use "higher estimated value" only when uncertainty-adjusted EV and
+data-quality gates qualify; never "safe", "guaranteed", or "lock" labels.
+Thresholds should be calibrated on historical training/validation and then
+frozen for forward testing, not chosen to maximize results on the test period.
+
+Start with fixed-unit PAPER bets and hard exposure limits. Account for vig via
+offered prices, slippage, commissions where relevant, limits and void rules.
+Kelly reference for a binary bet: f*=(p*d-1)/(d-1), clipped below at zero.
+If later tested, use a conservative fraction plus per-game/day/correlated-risk
+caps; model uncertainty can make raw Kelly dangerously large. Do not deploy
+automatic staking or actual bet placement as part of the first website.
+Multiple same-game signals require a frozen policy: one entry, or explicitly
+tracked incremental positions with aggregate exposure. Do not count every
+15-minute recommendation as an independent betting opportunity.
+
+11. FORWARD ANALYTICS
+--------------------
+Prediction quality: accuracy, log loss, Brier, calibration/counts, market-relative
+skill, all by fixed horizon, model version, season phase and probability bucket.
+Coverage: eligible games, successful forecasts, missed cutoffs, missing odds,
+stale quotes, failures and abstentions. Do not hide unforecastable games.
+Paper/actual betting: number of bets, stake turnover, net P&L, ROI=profit/staked,
+win rate, average odds, drawdown, exposure, uncertainty intervals and costs.
+CLV: record the executable bet price vs a specified closing benchmark/time/book
+or consensus using a documented convention. Positive CLV is evidence to study,
+not proof of profitability; do not let closing information enter earlier inputs.
+Settle against actual final results; handle cancellations, pushes/voids and
+provider corrections without deleting the original record.
+Use enough games and season coverage; a few wins or one hot month prove little.
+Compare strategies on the same opportunities, with clustered uncertainty and
+an explicit accounting of repeated hypothesis tests.
+
+12. IMPLEMENTATION ORDER AND ACCEPTANCE CHECKS
+-------------------------------------------
+Phase 0: commit/push current project checkpoint; retain this roadmap separately.
+Phase 1: fix as-of features, freshness, rest, train/deploy split and versioning.
+  Checks: cutoff leakage tests, latest final game included, same inputs reproduce
+  probabilities, production refit separate from untouched evaluation results.
+Phase 2: immutable local SQL forecast/odds ledger + scheduled paper tracking.
+  Checks: retry idempotency, no overwrites, postponement handling, fixed-horizon
+  selection, missing/stale cases, and every settled row traceable to inputs.
+Phase 3: controlled baselines/model/feature/calibration experiments and report.
+  Checks: same-game folds, out-of-fold calibration, matched horizons/coverage,
+  sensitivity to season, and no automatic promotion from a tiny improvement.
+Phase 4: frozen paper bet policy and outcome/CLV analytics.
+  Checks: actual quote EV on both sides, no fabricated fills, exposure caps,
+  settlement accounting, no outcome-informed selection of forecasts or bets.
+Phase 5: website and hosted worker/database with visible history and freshness.
+  Checks: restart recovery, monitoring, secrets isolation, mobile table usability,
+  historical reproducibility, and clear distinction between paper and real bets.
+
+Decisions still needed before implementation/purchases: monthly hosting/data
+budget; sportsbooks/regions; whether historical timestamped odds and injuries
+are affordable; official forecast horizon (proposed T-60m); paper risk limits.
+No data subscription, deployment or actual betting is approved by this plan.
+
+SOURCES CHECKED (2026-09-09)
+--------------------------
+- Walsh & Joshi, NBA betting experiments comparing calibration/accuracy model
+  selection. One study/season is not an expected-return promise:
+  https://arxiv.org/abs/2303.06021
+- Scikit-learn probability calibration and chronological validation:
+  https://scikit-learn.org/stable/modules/calibration.html
+  https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.TimeSeriesSplit.html
+- Grinsztajn et al., NeurIPS 2022 tabular benchmarks: motivation to compare tree
+  ensembles before assuming a neural network will improve this dataset:
+  https://arxiv.org/abs/2207.08815
+- The Odds API historical documentation: timestamps, closest earlier snapshot,
+  five-minute history since September 2022, and paid-plan access. Provider
+  capability only; availability/cost for our exact markets must be verified:
+  https://the-odds-api.com/liveapi/guides/v4/#get-historical-odds
+
+ORIGINAL SCRATCH IDEAS
+======================
 add playoffs on top of reg szn or do playoffs only model
 
 random forest/xgboost
