@@ -71,8 +71,15 @@ All 15 notebook code cells executed successfully. Two production runs retained
 the row count unchanged. All 333 latest probabilities reproduced from their
 archived model and inputs. CLI reporting and the synthetic chart were verified;
 `pip check` found no broken requirements.
-The Odds API adapter is tested with mocked responses; the user has no key yet,
-so no live odds access, subscription purchase, or actual wager was attempted.
+Initial odds testing used mocked responses. Subsequent live verification used
+two read-only API calls (498 credits remained) and revealed provider expected
+start times commonly 10 minutes after NBA scheduled starts. The adapter now
+requires a unique team-pair match within 15 minutes, retains both timestamps,
+and keeps the NBA cutoff. It rejects quotes after either start time. Replaying
+the saved response matched 36 games and 41 markets (36 DraftKings, 5 FanDuel).
+Five Christmas events were outside the current 90-day forecast window.
+All 40 tests pass, including offset/ambiguity/pregame-boundary checks. No key was
+saved to source, no subscription purchased, and no actual wager attempted.
 
 Boundaries and next work:
 

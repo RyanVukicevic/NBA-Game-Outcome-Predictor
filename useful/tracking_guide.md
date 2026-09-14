@@ -30,8 +30,9 @@ eligible. Production forecasts and archived synthetic examples are separate.
 
 The adapter uses The Odds API v4, not a DraftKings login. Obtain your own API key
 at https://the-odds-api.com/ after checking current costs and NBA/bookmaker
-coverage. No key was available during implementation; collection is tested
-against mocked responses, not a paid live account.
+coverage. Live authentication and NBA collection have now been verified, alongside
+mocked tests. The key supplied during verification was used only in temporary
+process environments, not saved to the repository or notebook.
 
 Set `ODDS_API_KEY` locally in the terminal session. To avoid typing it into
 PowerShell command history:
@@ -50,9 +51,11 @@ prints quota headers, and returns. Missing books/events invalidate older quotes;
 network failures do not invent a successful response. Full-feed ingestion is
 not suitable for a manually filtered event subset.
 
-Provider events must match the NBA home/away abbreviations and exact UTC tipoff
-uniquely. Unmatched events are counted, not guessed. Refresh/reconcile schedules
-when times disagree. A quoted market does not prove a wager would be accepted.
+Provider events must match the NBA home/away abbreviations uniquely within
+15 minutes of the NBA tipoff. The live feed lists many expected starts 10 minutes
+later. Both times and their offset are retained, but NBA time remains the policy
+cutoff. Quotes are excluded after either start time. Larger or ambiguous
+differences fail closed. A quoted market does not prove a wager would be accepted.
 
 Provider reference checked during implementation:
 https://the-odds-api.com/liveapi/guides/v4/

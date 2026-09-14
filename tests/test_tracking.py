@@ -243,6 +243,35 @@ class TrackingTests(unittest.TestCase):
         self.assertEqual(session.get.call_args.kwargs["params"]["markets"], "h2h")
         self.assertEqual(session.get.call_args.kwargs["params"]["oddsFormat"], "decimal")
 
+    def test_provider_expected_start_preserves_nba_cutoff(self):
+        event = {**self.event(), "commence_time": "2026-10-20T23:10:00Z"}
+        stats = ingest_odds(self.ledger, [event], QUOTE, ("draftkings",))
+        self.assertEqual(stats["time_offset_matches"], 1)
+        row = self.ledger.rows("SELECT * FROM odds")[0]
+        self.assertEqual(row["tipoff"], utc(START))
+        self.assertEqual(json.loads(row["payload"])["provider_tipoff"], utc(event["commence_time"]))
+        self.ledger.decide(self.policy, CUTOFF)
+        self.assertIsNone(self.decision()["reason"])
+
+    def test_ambiguous_start_match_is_rejected(self):
+        self.ledger.game("other", "BOS", "NYK")
+        self.ledger.schedule("other", "2026-10-20T23:05:00Z", ISSUED)
+        stats = ingest_odds(self.ledger, [self.event()], QUOTE, ("draftkings",))
+        self.assertEqual(stats["unmatched"], 1)
+        self.assertEqual(stats["quotes"], 0)
+
+    def test_later_provider_start_cannot_extend_pregame_window(self):
+        event = {**self.event(), "commence_time": "2026-10-20T23:10:00Z"}
+        stats = ingest_odds(self.ledger, [event], "2026-10-20T23:01:00Z", ("draftkings",))
+        self.assertEqual(stats["started"], 1)
+        self.assertEqual(stats["quotes"], 0)
+
+    def test_earlier_provider_start_cannot_extend_pregame_window(self):
+        event = {**self.event(), "commence_time": "2026-10-20T22:50:00Z"}
+        stats = ingest_odds(self.ledger, [event], "2026-10-20T22:55:00Z", ("draftkings",))
+        self.assertEqual(stats["started"], 1)
+        self.assertEqual(stats["quotes"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
