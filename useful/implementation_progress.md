@@ -41,5 +41,46 @@ Current boundaries:
 - Existing experiment scores predate these corrections and must be rerun before
   comparing against corrected models.
 
-Next: Milestone 2, persistent games/model/prediction/result records with immutable
-forecast snapshots, idempotent writes, and fixed-horizon evaluation selection.
+Follow-on work is recorded in Milestone 2 below.
+
+## Milestone 2: Pregame Ledger And Paper Comparisons
+
+Implemented:
+
+- Versioned SQLite schema for stable NBA games, observed schedule revisions,
+  model metadata, immutable forecasts, bookmaker quotes, final-result revisions,
+  policy-specific decisions, and separate actual wager/settlement receipts.
+- Production forecasts automatically enter the ledger; historic archive imports
+  retain present-day receipt times and cannot invent historical availability.
+- Read-only The Odds API v4 NBA moneyline adapter with secret-safe errors, quota
+  reporting, exact event matching, and unavailable-market observations.
+- Pinned-model/bookmaker policies with T-60m, $10 stake, 10-minute odds freshness,
+  24-hour prediction freshness, and a configurable unvalidated 3% EV threshold.
+- Favorite/home/model-winner/model-value comparisons on a shared eligible cohort,
+  explicit skips, pending results, conservative schedule-change voids, and no
+  repeat entries for the same policy/game.
+- Paper profit/ROI/drawdown/season/month reports, model and no-vig market
+  calibration/Brier/log-loss, and game-day bootstrap ROI intervals.
+- CLI receipt import, odds collection, decision selection, result reconciliation,
+  schedule-status updates, and report exports. No order execution.
+- Demo ledger inspection and isolated synthetic 30-game accounting walkthrough.
+
+Verification: 36 unit tests passed, including prior forecast foundation tests.
+All 15 notebook code cells executed successfully. Two production runs retained
+666 forecast snapshots across 333 games; re-importing the latest artifact left
+the row count unchanged. All 333 latest probabilities reproduced from their
+archived model and inputs. CLI reporting and the synthetic chart were verified;
+`pip check` found no broken requirements.
+The Odds API adapter is tested with mocked responses; the user has no key yet,
+so no live odds access, subscription purchase, or actual wager was attempted.
+
+Boundaries and next work:
+
+- Collection is command-driven; managed scheduling and deployment remain next.
+- Automated postponement/cancellation detection is not implemented. Explicit
+  status updates and forecast-observed tipoff changes are supported.
+- This is prospective paper research, not a historical-odds backfill or proof of
+  profitability. Quoted prices are not guaranteed accepted wagers.
+- No NFL/UFC model, live betting, staking optimizer, or automatic execution.
+- The original ideas.txt user edits remain untouched. Operational details and
+  agreed pregame/favorite benchmark scope are in useful/tracking_guide.md.

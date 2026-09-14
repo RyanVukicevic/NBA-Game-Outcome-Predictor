@@ -651,6 +651,10 @@ def run_production_predictions(config_path: Path = CONFIG_PATH) -> pd.DataFrame:
     artifact.write_text(json.dumps({"model": result.metadata, "snapshot_path": str(snapshot_path),
                                    "predictions": rows.to_dict(orient="records")},
                                    indent=2, default=str), encoding="utf-8")
+    from tracking import Ledger
+    with Ledger() as ledger:
+        tracked = ledger.import_forecasts({"model": result.metadata, "predictions": rows.to_dict(orient="records")})
+    print(f"Pregame forecasts recorded in tracking database: {tracked}")
 
     print(f"Seasons: {', '.join(config.seasons)}")
     print(f"Model: {model_path}")

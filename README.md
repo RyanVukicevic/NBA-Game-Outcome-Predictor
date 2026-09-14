@@ -4,6 +4,21 @@ Starter project for building an NBA game predictor with [`nba_api`](https://gith
 
 The current predictor uses team game logs, builds rolling pre-game team features, trains a logistic regression model, and predicts the home team's win probability for a matchup.
 
+## Pregame Tracking And Paper Benchmarks
+
+Upcoming forecasts now enter an append-only local SQLite ledger automatically.
+The new `src/track.py` CLI imports pregame odds from The Odds API, freezes
+bookmaker/model-specific T-60-minute decisions, reconciles final results, and
+compares flat-stake favorite, home, model-winner, and model-value strategies.
+Reports include profit, ROI, drawdown, monthly/season breakdowns, calibration,
+and descriptive uncertainty intervals. Actual wager receipts stay separate.
+
+See [the tracking guide](useful/tracking_guide.md) for commands, API-key setup,
+cutoff/freshness rules, and accounting assumptions. The demo ends with real
+database counts plus an isolated synthetic accounting example, not a claimed
+live profit record. No API key is required for that example. No subscription,
+background scheduler, live-game prediction, or automated wagering is enabled.
+
 ## Setup
 
 Install Python 3.10+ (this PC uses Python 3.12), then create a project environment:

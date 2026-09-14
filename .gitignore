@@ -6,3 +6,10 @@ __pycache__/
 *.pyc
 .venv/
 .ipynb_checkpoints/
+data/tracking/
+.env
+.env.*
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
