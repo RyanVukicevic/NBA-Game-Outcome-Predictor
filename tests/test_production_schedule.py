@@ -43,6 +43,19 @@ class ScheduleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             upcoming_games(replace(load_production_config(), upcoming_days=-1))
 
+    def test_ids_and_status_override_ambiguous_labels(self):
+        rows = pd.DataFrame([
+            ["0022600001", 1, "NBA Cup Finals", "BOS", "NYK"],
+            ["0052600001", 1, "", "BOS", "NYK"],
+            ["0022600002", 2, "", "NYK", "BOS"],
+        ], columns=["GAME_ID", "STATUS_ID", "GAME_LABEL", "HOME_TEAM", "AWAY_TEAM"])
+        rows["GAME_DATE"] = date(2026, 12, 1)
+        with patch("production.fetch_schedule_games", return_value=rows):
+            games = upcoming_games(replace(load_production_config(), upcoming_days=1), today=date(2026, 12, 1))
+        self.assertEqual(len(games), 1)
+        self.assertFalse(games[0].is_playoffs)
+        self.assertEqual(games[0].game_id, "0022600001")
+
     def test_empty_search_prints_window_without_loading_model(self):
         output = io.StringIO()
         with patch("production.date") as today, patch("production.upcoming_games", return_value=[]), patch("production.load_or_train_production_model") as model:

@@ -4,6 +4,33 @@ import pandas as pd
 from nba_api.stats.endpoints import leaguegamelog
 
 from config import RAW_DIR
+from provenance import local_day
+
+
+def completed_game_logs(logs: pd.DataFrame, as_of=None) -> pd.DataFrame:
+    """Use paired final W/L rows strictly before the Eastern calendar cutoff.
+
+    Legacy logs do not record result publication times; this is an event-date
+    replay, not a claim of historical point-in-time ingestion completeness.
+    """
+    df = logs.copy()
+    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"]).dt.normalize()
+    df = df.loc[(df["GAME_DATE"] < local_day(as_of)) & df["WL"].isin(["W", "L"])].copy()
+    if "GAME_STATUS_ID" in df:
+        df = df.loc[pd.to_numeric(df["GAME_STATUS_ID"], errors="coerce") == 3]
+    df["GAME_ID"] = df["GAME_ID"].astype(str).str.replace(r"\.0$", "", regex=True).str.zfill(10)
+    if df.duplicated(["GAME_ID", "TEAM_ID"]).any():
+        raise ValueError("Duplicate team rows for one game; reconcile the source before forecasting.")
+    groups = df.groupby("GAME_ID")
+    df["_HOME_ROW"] = df["MATCHUP"].str.contains(" vs. ", regex=False).astype(int)
+    groups = df.groupby("GAME_ID")
+    valid = (groups.size().eq(2) & groups["WL"].nunique().eq(2) & groups["GAME_DATE"].nunique().eq(1)
+             & groups["TEAM_ID"].nunique().eq(2) & groups["_HOME_ROW"].sum().eq(1))
+    df = df.loc[df["GAME_ID"].isin(valid.index[valid])]
+    df = df.drop(columns="_HOME_ROW")
+    if df.duplicated(["TEAM_ID", "GAME_DATE"]).any():
+        raise ValueError("Daily logs cannot order multiple games for one team on the same date.")
+    return df.sort_values(["GAME_DATE", "GAME_ID", "TEAM_ID"]).reset_index(drop=True)
 
 
 def season_type_cache_slug(season_type: str) -> str:

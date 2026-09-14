@@ -36,11 +36,16 @@ def calibration_table(y_true: pd.Series, probabilities, bins: int = 10) -> pd.Da
     )
 
 
-def temporal_cv_scores(model, x: pd.DataFrame, y: pd.Series, splits: int = 5) -> pd.DataFrame:
+def temporal_cv_scores(model, x: pd.DataFrame, y: pd.Series, splits: int = 5, dates=None) -> pd.DataFrame:
     splitter = TimeSeriesSplit(n_splits=splits)
     rows = []
 
     for fold, (train_index, test_index) in enumerate(splitter.split(x), start=1):
+        if dates is not None:
+            game_dates = pd.to_datetime(dates).reset_index(drop=True)
+            train_index = train_index[game_dates.iloc[train_index].to_numpy() < game_dates.iloc[test_index].min()]
+        if len(train_index) == 0:
+            continue
         fold_model = clone(model)
         x_train, x_test = x.iloc[train_index], x.iloc[test_index]
         y_train, y_test = y.iloc[train_index], y.iloc[test_index]
@@ -54,6 +59,17 @@ def temporal_cv_scores(model, x: pd.DataFrame, y: pd.Series, splits: int = 5) ->
         rows.append(metrics)
 
     return pd.DataFrame(rows)
+
+
+def holdout_split_index(dates, test_fraction: float = 0.2) -> int:
+    if not 0 < test_fraction < 1:
+        raise ValueError("test_fraction must be between zero and one.")
+    dates = pd.Series(pd.to_datetime(dates)).reset_index(drop=True)
+    boundary = dates.iloc[int(len(dates) * (1 - test_fraction))]
+    split = int((dates < boundary).sum())
+    if split == 0 or split == len(dates):
+        raise ValueError("Not enough distinct dates for a chronological holdout.")
+    return split
 
 
 def walk_forward_cv_scores(model, x: pd.DataFrame, y: pd.Series, dates: pd.Series, splits: int = 5) -> pd.DataFrame:

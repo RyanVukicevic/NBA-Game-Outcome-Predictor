@@ -3,9 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from config import ID_COLUMNS
-from data import load_game_logs
-from elo import add_elo_features
-from features import add_interaction_features, add_team_features, build_matchup_dataset, select_feature_names
+from data import load_game_logs, completed_game_logs
+from modeling import load_or_build_model_frames
 
 
 def export_model_stages(
@@ -30,52 +29,21 @@ def export_model_stages(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     all_seasons = list(dict.fromkeys([*(warmup_seasons or []), *seasons]))
-    raw_logs = load_game_logs(all_seasons, season_types=season_types, refresh=refresh)
-    team_features = add_team_features(
-        raw_logs,
-        rolling_window=rolling_window,
-        min_periods=min_periods,
-        rolling_history=rolling_history,
-        use_prior_season_features=use_prior_season_features,
-        prior_decay_games=prior_decay_games,
+    raw_logs = completed_game_logs(load_game_logs(all_seasons, season_types=season_types, refresh=refresh))
+    settings = dict(
+        seasons=seasons, rolling_window=rolling_window, min_periods=min_periods,
+        feature_mode=feature_mode, season_types=season_types, warmup_seasons=warmup_seasons,
+        rolling_history=rolling_history, use_prior_season_features=use_prior_season_features,
+        prior_decay_games=prior_decay_games, use_elo=use_elo, elo_k=elo_k,
+        elo_playoff_k=elo_playoff_k, elo_home_advantage=elo_home_advantage,
+        elo_carryover=elo_carryover, game_logs=raw_logs,
     )
-    deltas = build_matchup_dataset(team_features, rolling_window=rolling_window, feature_set="deltas")
-    full = build_matchup_dataset(team_features, rolling_window=rolling_window, feature_set="full")
-
-    if use_elo:
-        deltas_frame = add_elo_features(
-            deltas.full,
-            k_factor=elo_k,
-            playoff_k_factor=elo_playoff_k,
-            home_advantage=elo_home_advantage,
-            carryover=elo_carryover,
-        )[0]
-        full_frame = add_elo_features(
-            full.full,
-            k_factor=elo_k,
-            playoff_k_factor=elo_playoff_k,
-            home_advantage=elo_home_advantage,
-            carryover=elo_carryover,
-        )[0]
-    else:
-        deltas_frame = deltas.full
-        full_frame = full.full
-
-    deltas_frame = add_interaction_features(deltas_frame, rolling_window=rolling_window)
-    full_frame = add_interaction_features(full_frame, rolling_window=rolling_window)
-    deltas_feature_names = select_feature_names(
-        deltas_frame,
-        feature_set="deltas",
-        use_elo=use_elo,
-        feature_mode=feature_mode,
-    )
+    team_features, deltas, _ = load_or_build_model_frames(**settings, feature_set="deltas")
+    _, full, _ = load_or_build_model_frames(**settings, feature_set="full")
+    deltas_frame, full_frame = deltas.full, full.full
+    deltas_feature_names = deltas.feature_names
     selected_frame = deltas_frame if feature_set == "deltas" else full_frame
-    selected_feature_names = select_feature_names(
-        selected_frame,
-        feature_set=feature_set,
-        use_elo=use_elo,
-        feature_mode=feature_mode,
-    )
+    selected_feature_names = deltas.feature_names if feature_set == "deltas" else full.feature_names
 
     paths = {
         "raw_game_logs": output_dir / "01_raw_game_logs.csv",

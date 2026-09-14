@@ -7,7 +7,8 @@ from pathlib import Path
 from config import PROCESSED_DIR, REPORTS_DIR, default_model_path
 from inspection import export_model_stages
 from modeling import build_elo_leaderboard, train_model, save_training_result, load_training_result
-from prediction import predict_matchup
+from prediction import predict_matchup, predict_matchup_details
+import json
 from production import CONFIG_PATH, run_production_predictions, run_sample_predictions
 from tuning import save_tuning_results, tune_elo_settings, tune_model_grid, tune_rolling_settings
 
@@ -47,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     train_parser = subparsers.add_parser("train", help="Train and evaluate the model.")
     add_common_args(train_parser)
     train_parser.add_argument("--model-out", type=Path)
+    train_parser.add_argument("--as-of", help="Data cutoff (date or timestamp); excludes same-day results.")
     train_parser.add_argument("--cv-splits", type=int, default=0)
     train_parser.add_argument("--cv-method", choices=["timeseries", "walk-forward"], default="timeseries")
     train_parser.add_argument("--reports-dir", type=Path, default=REPORTS_DIR)
@@ -57,6 +59,9 @@ def parse_args() -> argparse.Namespace:
     predict_parser.add_argument("--away", required=True, help="Away team abbreviation, e.g. NYK")
     predict_parser.add_argument("--is-playoffs", action="store_true")
     predict_parser.add_argument("--model-in", type=Path)
+    predict_parser.add_argument("--game-date", help="Scheduled game date, YYYY-MM-DD; defaults to today.")
+    predict_parser.add_argument("--as-of", help="Issue/data cutoff date or timestamp.")
+    predict_parser.add_argument("--output", type=Path, help="Save the prediction inputs and provenance as JSON.")
     predict_parser.add_argument("--retrain", action="store_true", help="Retrain before predicting.")
 
     inspect_parser = subparsers.add_parser("inspect", help="Export intermediate DataFrames to CSV.")
@@ -204,6 +209,7 @@ def main() -> None:
             prior_decay_games=args.prior_decay_games,
         )
         result = train_model(
+            as_of=args.as_of,
             seasons=args.seasons,
             rolling_window=args.rolling_window,
             min_periods=args.min_periods,
@@ -377,6 +383,7 @@ def main() -> None:
         )
         if args.retrain or not model_in.exists():
             result = train_model(
+                as_of=args.as_of,
                 seasons=args.seasons,
                 rolling_window=args.rolling_window,
                 min_periods=args.min_periods,
@@ -398,8 +405,14 @@ def main() -> None:
         else:
             result = load_training_result(model_in)
 
-        probability = predict_matchup(result, args.home, args.away, is_playoffs=args.is_playoffs)
+        details = predict_matchup_details(result, args.home, args.away, is_playoffs=args.is_playoffs,
+                                           game_date=args.game_date, as_of=args.as_of)
+        probability = details["home_win_probability"]
         print(f"{args.home.upper()} home win probability vs {args.away.upper()}: {probability:.1%}")
+        print(f"Model: {details['model_id'][:12]}; completed data through: {details['snapshot_end']}")
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(details, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pandas as pd
+import numpy as np
 
 from config import BOX_SCORE_COLUMNS
 from elo import ELO_COLUMNS
@@ -54,7 +55,7 @@ def add_team_features(
 
     df = df.sort_values(["TEAM_ID", "GAME_DATE", "GAME_ID"]).reset_index(drop=True)
     df["REST_DAYS"] = (
-        df.groupby(group_columns)["GAME_DATE"].diff().dt.days.clip(lower=0, upper=5).fillna(3)
+        df.groupby("TEAM_ID")["GAME_DATE"].diff().dt.days.clip(lower=0, upper=5).fillna(3)
     )
 
     grouped = df.groupby(group_columns, group_keys=False)
@@ -82,6 +83,9 @@ def add_prior_season_features(team_games: pd.DataFrame, prior_decay_games: int =
     summaries[["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]] = summaries.groupby("TEAM_ID")[
         ["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]
     ].shift(1)
+    previous_year = summaries.groupby("TEAM_ID")["SEASON_YEAR"].shift(1)
+    consecutive = pd.to_numeric(summaries["SEASON_YEAR"]) - pd.to_numeric(previous_year) == 1
+    summaries.loc[~consecutive, ["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"]] = np.nan
     summaries = summaries.dropna(subset=["PRIOR_SEASON_WIN", "PRIOR_SEASON_PLUS_MINUS"])
 
     df = team_games.merge(
@@ -101,7 +105,7 @@ def add_prior_season_features(team_games: pd.DataFrame, prior_decay_games: int =
     return df
 
 
-def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.DataFrame:
+def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int, require_features: bool = True) -> pd.DataFrame:
     """Combine the two team rows for each NBA game into one home-vs-away row."""
     rolling_columns = [f"ROLLING_{rolling_window}_{column}" for column in BOX_SCORE_COLUMNS]
     prior_columns = [
@@ -124,7 +128,7 @@ def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.Dat
 
         home_row = home.iloc[0]
         away_row = away.iloc[0]
-        if home_row[rolling_columns].isna().any() or away_row[rolling_columns].isna().any():
+        if require_features and (home_row[rolling_columns].isna().any() or away_row[rolling_columns].isna().any()):
             continue
 
         row: dict[str, float | str | pd.Timestamp] = {
@@ -164,7 +168,9 @@ def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int) -> pd.Dat
 
         rows.append(row)
 
-    return pd.DataFrame(rows).sort_values("GAME_DATE").reset_index(drop=True)
+    if not rows:
+        raise ValueError("No eligible paired matchups. Check history and minimum periods.")
+    return pd.DataFrame(rows).sort_values(["GAME_DATE", "GAME_ID"]).reset_index(drop=True)
 
 
 def add_interaction_features(matchup_frame: pd.DataFrame, rolling_window: int) -> pd.DataFrame:
@@ -321,11 +327,48 @@ def build_matchup_dataset(
 
 
 def latest_features_by_team(team_games: pd.DataFrame, rolling_window: int) -> pd.DataFrame:
-    rolling_columns = [f"ROLLING_{rolling_window}_{column}" for column in BOX_SCORE_COLUMNS]
-    return (
-        team_games.dropna(subset=rolling_columns)
-        .sort_values(["TEAM_ID", "GAME_DATE", "GAME_ID"])
-        .groupby("TEAM_ABBREVIATION", as_index=False)
-        .tail(1)
-        .set_index("TEAM_ABBREVIATION")
-    )
+    return forecast_team_features(team_games, rolling_window,
+                                  pd.to_datetime(team_games["GAME_DATE"]).max() + pd.Timedelta(days=1))
+
+
+def forecast_team_features(history: pd.DataFrame, rolling_window: int, game_date,
+                           min_periods: int = 1, rolling_history: str = "same-season",
+                           prior_decay_games: int = 30) -> pd.DataFrame:
+    """Post-result snapshots for a future matchup, using only supplied history.
+
+    Insufficient current-season history uses the last available rolling window,
+    explicitly marked as a fallback; unknown teams have no synthetic forecast.
+    """
+    target = pd.Timestamp(game_date).normalize()
+    season = target.year if target.month >= 10 else target.year - 1
+    df = history.copy()
+    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
+    df = df.loc[df["GAME_DATE"] < target].sort_values(["GAME_DATE", "GAME_ID"])
+    df["WIN"] = (df["WL"] == "W").astype(float)
+    df["SEASON_YEAR"] = df["SEASON_ID"].astype(str).str[-4:]
+    rows = []
+    for team, games in df.groupby("TEAM_ABBREVIATION"):
+        current = games.loc[games["SEASON_YEAR"] == str(season)]
+        selected = current if rolling_history == "same-season" else games
+        fallback = len(selected) < min_periods
+        if fallback:
+            selected = games
+        window = selected.tail(rolling_window)
+        row = games.iloc[-1].to_dict()
+        row["TEAM_ABBREVIATION"] = team
+        row["HISTORY_FALLBACK"] = fallback
+        row["HISTORY_GAMES"] = len(window)
+        row["REST_DAYS"] = float(np.clip((target - games["GAME_DATE"].max()).days, 0, 5))
+        for column in BOX_SCORE_COLUMNS:
+            row[f"ROLLING_{rolling_window}_{column}"] = pd.to_numeric(window[column], errors="raise").mean()
+        previous = games.loc[games["SEASON_YEAR"] == str(season - 1)]
+        weight = max(0.0, 1 - len(current) / prior_decay_games) if prior_decay_games > 0 else 0.0
+        row["PRIOR_SEASON_WEIGHT"] = weight
+        for stat in ("WIN", "PLUS_MINUS"):
+            prior = float(previous[stat].mean()) if not previous.empty else 0.0
+            row[f"PRIOR_SEASON_{stat}"] = prior
+            row[f"DECAYED_PRIOR_SEASON_{stat}"] = prior * weight
+        rows.append(row)
+    if not rows:
+        raise ValueError("No completed history before the prediction game date.")
+    return pd.DataFrame(rows).set_index("TEAM_ABBREVIATION")

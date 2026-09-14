@@ -179,9 +179,53 @@ query both seasons. Preseason, exhibitions, completed games, and opponents outsi
 the NBA are excluded. All returned matchups use the same latest model snapshot;
 future team form and roster changes are not projected.
 
-To update production data and rebuild its saved model, set both `retrain=true`
-and `refresh=true` for a run, then return them to `false` to reuse the cache.
-Setting `refresh=true` alone does not refresh an already-loaded model.
+Production reloads completed history from cached logs on every run. Set
+`refresh=true` to download updated logs and advance the prediction snapshot
+without changing compatible model weights. Set `retrain=true` to refit weights
+as well. Return both to `false` for cached runs. Scheduled ingestion is a later
+milestone; cached runs do not imply that NBA.com was checked for new results.
+
+## Reproducible Forecasts (Milestone 1)
+
+Evaluation uses an approximately 80/20 holdout with whole dates kept together.
+`result.model` remains the evaluation estimator. `result.deployment_model` is a
+separate fit on all eligible matchups and is used for future predictions.
+Holdout metrics always belong to the evaluation fit, never the deployment refit.
+
+Daily logs must contain both teams with final W/L results. Only games strictly
+before the cutoff's Eastern calendar date are eligible. These older CSVs have
+no historical publication/ingestion timestamps, so this is a conservative
+event-date replay, not a verified intraday information-availability backtest.
+Same-day results are deliberately excluded until richer ingestion is implemented.
+
+Prediction rolling windows include the latest eligible completed game. Rest is
+computed from the target date and the preceding known/scheduled game (capped at
+five days, matching training). New-season/sparse history uses a labeled rolling
+fallback; Elo regresses at season rollover. Future results are never simulated.
+Elo training includes games excluded from rolling-feature training by min periods.
+
+Each model has a JSON manifest recording data/settings/source/runtime identities,
+evaluation and deployment cutoffs, and training counts. `code_commit` is the Git
+HEAD at fit time; `implementation_id` hashes the actual Python working tree.
+Content-addressed processed caches invalidate when source data, settings, code,
+or relevant package versions change. Production uses new `_v2` artifacts and
+preserves legacy models; incompatible source/runtime artifacts are retrained.
+
+Upcoming runs save forecast JSON (including actual model inputs) under
+`reports/forecasts/`, immutable model versions under `models/versions/`, and data
+snapshots under `data/processed/snapshots/`. These generated files remain local.
+This is the reproducibility foundation, not yet the SQL history/scheduler milestone.
+
+To produce a historical-cutoff model and a fully specified example forecast:
+
+```powershell
+.\.venv\Scripts\python.exe src/main.py train --seasons 2023-24 2024-25 --as-of 2025-07-01 --use-elo --model-out models/cutoff_demo.joblib --reports-dir reports/cutoff_demo
+.\.venv\Scripts\python.exe src/main.py predict --model-in models/cutoff_demo.joblib --home BOS --away NYK --as-of 2025-07-01 --game-date 2025-07-02 --output reports/cutoff_demo/prediction.json
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+The example matchup is hypothetical. A model trained after the requested cutoff
+is rejected. Legacy prediction models without a manifest require retraining.
 
 The current production settings are:
 

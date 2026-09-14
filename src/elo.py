@@ -58,7 +58,8 @@ def add_elo_features(
         season_key = season_year_key(row.get("SEASON_ID"))
         if season_key is not None and season_key != current_season:
             if current_season is not None:
-                ratings = regress_ratings_to_mean(ratings, initial_elo=initial_elo, carryover=carryover)
+                transitions = max(1, int(season_key) - int(current_season))
+                ratings = regress_ratings_to_mean(ratings, initial_elo=initial_elo, carryover=carryover ** transitions)
                 rating_history = {team: [rating] for team, rating in ratings.items()}
             current_season = season_key
 

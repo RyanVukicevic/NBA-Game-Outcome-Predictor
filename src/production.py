@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+import json
+import joblib
 
 import pandas as pd
 
@@ -13,8 +15,11 @@ from modeling import (
     load_training_result,
     save_training_result,
     train_model,
+    update_prediction_history,
 )
-from prediction import predict_matchup
+from prediction import predict_matchup, predict_matchup_details
+from data import load_game_logs
+from provenance import SCHEMA_VERSION, implementation_id, runtime_versions, cutoff_timestamp, digest
 
 
 CONFIG_PATH = PROJECT_ROOT / "production_config.txt"
@@ -50,6 +55,8 @@ class UpcomingGame:
     is_playoffs: bool = False
     away_score: float | None = None
     home_score: float | None = None
+    game_id: str | None = None
+    tipoff_at: str | None = None
 
 
 def nba_season_label(start_year: int) -> str:
@@ -147,7 +154,7 @@ def model_matches_config(result: TrainingResult, config: ProductionConfig) -> bo
 
 
 def production_model_path(config: ProductionConfig) -> Path:
-    return default_model_path(
+    legacy = default_model_path(
         config.feature_set,
         config.rolling_window,
         config.min_periods,
@@ -158,14 +165,24 @@ def production_model_path(config: ProductionConfig) -> Path:
         use_prior_season_features=config.use_prior_season_features,
         prior_decay_games=config.prior_decay_games,
     )
+    return legacy.with_name(f"{legacy.stem}_v{SCHEMA_VERSION}{legacy.suffix}")
 
 
 def load_or_train_production_model(config: ProductionConfig) -> tuple[TrainingResult, Path, bool]:
     path = production_model_path(config)
-    if path.exists() and not config.retrain:
+    issued_at = cutoff_timestamp()
+    logs = load_game_logs(config.seasons, season_types=config.season_types, refresh=config.refresh)
+    manifest = path.with_suffix(".json")
+    compatible = False
+    if manifest.exists():
+        metadata = json.loads(manifest.read_text(encoding="utf-8"))
+        compatible = (metadata.get("schema_version") == SCHEMA_VERSION
+                      and metadata.get("implementation_id") == implementation_id()
+                      and metadata.get("runtime") == runtime_versions())
+    if path.exists() and compatible and not config.retrain:
         result = load_training_result(path)
         if model_matches_config(result, config):
-            return result, path, False
+            return update_prediction_history(result, logs, issued_at), path, False
 
     result = train_model(
         seasons=config.seasons,
@@ -182,7 +199,8 @@ def load_or_train_production_model(config: ProductionConfig) -> tuple[TrainingRe
         elo_playoff_k=config.elo_playoff_k,
         elo_home_advantage=config.elo_home_advantage,
         elo_carryover=config.elo_carryover,
-        refresh=config.refresh,
+        game_logs=logs,
+        as_of=issued_at,
     )
     save_training_result(result, path)
     return result, path, True
@@ -231,6 +249,9 @@ def team_value_to_abbreviation(value, id_map: dict[int, str], name_map: dict[str
 
 def normalize_schedule_frame(frame: pd.DataFrame) -> pd.DataFrame:
     rename_candidates = {
+        "GAME_ID": ["GAME_ID", "gameId"],
+        "STATUS_ID": ["GAME_STATUS_ID", "gameStatus"],
+        "TIPOFF_AT": ["gameDateTimeUTC", "GAME_DATE_TIME_UTC"],
         "GAME_DATE": ["GAME_DATE", "GAME_DATE_EST", "GAME_DATE_TIME_EST", "gameDate", "gameDateEst", "gameDateTimeEst"],
         "HOME_TEAM": ["HOME_TEAM_ABBREVIATION", "HOME_TEAM_ABBREVIATION_NAME", "HOME_TEAM", "homeTeam", "homeTeam_teamTricode"],
         "AWAY_TEAM": ["VISITOR_TEAM_ABBREVIATION", "AWAY_TEAM_ABBREVIATION", "VISITOR_TEAM", "AWAY_TEAM", "awayTeam", "awayTeam_teamTricode"],
@@ -308,10 +329,22 @@ def upcoming_games(config: ProductionConfig, today: date | None = None) -> list[
     mask = (schedule["GAME_DATE"] >= today) & (schedule["GAME_DATE"] <= end_date)
     labels = schedule.reindex(columns=["GAME_LABEL", "GAME_SUBTYPE", "SERIES_TEXT"]).fillna("").astype(str).agg(" ".join, axis=1)
     is_playoffs = labels.str.contains("playoff|finals|first round|conference", case=False, regex=True)
+    phase = pd.Series(None, index=schedule.index, dtype=object)
+    if "GAME_ID" in schedule:
+        prefixes = schedule["GAME_ID"].astype(str).str.replace(r"\.0$", "", regex=True).str.zfill(10).str[:3]
+        phase = prefixes.map({"001": "Preseason", "002": "Regular Season", "003": "All Star",
+                              "004": "Playoffs", "005": "Play-In"})
+        is_playoffs = is_playoffs.where(phase.isna(), phase.eq("Playoffs"))
     supported = schedule["HOME_TEAM"].isin(team_id_to_abbreviation().values()) & schedule["AWAY_TEAM"].isin(team_id_to_abbreviation().values())
     supported &= ~labels.str.contains("preseason|all.star", case=False, regex=True)
+    supported &= phase.isna() | phase.isin(config.season_types)
     if "STATUS" in schedule:
         supported &= ~schedule["STATUS"].fillna("").str.contains("final", case=False)
+    if "STATUS_ID" in schedule:
+        supported &= pd.to_numeric(schedule["STATUS_ID"], errors="coerce").eq(1)
+    if "TIPOFF_AT" in schedule:
+        tipoffs = pd.to_datetime(schedule["TIPOFF_AT"], utc=True, errors="coerce")
+        supported &= tipoffs.isna() | (tipoffs > cutoff_timestamp())
     if "Playoffs" not in config.season_types:
         supported &= ~is_playoffs
     if "Regular Season" not in config.season_types:
@@ -335,6 +368,8 @@ def upcoming_games(config: ProductionConfig, today: date | None = None) -> list[
                 away_team=row.AWAY_TEAM,
                 home_team=row.HOME_TEAM,
                 is_playoffs=bool(row.IS_PLAYOFFS),
+                game_id=str(row.GAME_ID) if hasattr(row, "GAME_ID") else None,
+                tipoff_at=str(row.TIPOFF_AT) if hasattr(row, "TIPOFF_AT") else None,
             )
         )
     return games
@@ -417,13 +452,23 @@ def load_betting_lines(path: Path | None) -> dict[tuple[str, str], dict[str, flo
 def prediction_rows(config: ProductionConfig, result: TrainingResult, games: list[UpcomingGame]) -> pd.DataFrame:
     lines = load_betting_lines(config.betting_lines_csv)
     rows = []
-    for game in games:
-        home_probability = predict_matchup(
+    issued_at = cutoff_timestamp()
+    previous_dates = {}
+    for game in sorted(games, key=lambda g: (g.game_date, g.away_team, g.home_team)):
+        details = predict_matchup_details(
             result,
             home=game.home_team,
             away=game.away_team,
             is_playoffs=game.is_playoffs,
+            game_date=game.game_date,
+            as_of=issued_at,
+            rest_dates=previous_dates,
         )
+        home_probability = details["home_win_probability"]
+        details["game_id"] = game.game_id
+        details["tipoff_at"] = game.tipoff_at
+        details["prediction_id"] = digest({k: v for k, v in details.items() if k != "prediction_id"})
+        previous_dates.update({game.home_team: game.game_date, game.away_team: game.game_date})
         away_probability = 1 - home_probability
         predicted_winner = game.home_team if home_probability >= 0.5 else game.away_team
         confidence = max(home_probability, away_probability)
@@ -436,6 +481,11 @@ def prediction_rows(config: ProductionConfig, result: TrainingResult, games: lis
         rows.append(
             {
                 "date": game.game_date.isoformat(),
+                "game_id": game.game_id,
+                "model_id": details["model_id"],
+                "input_hash": details["input_hash"],
+                "history_fallback": details["history_fallback"],
+                "provenance": details,
                 "away": game.away_team,
                 "home": game.home_team,
                 "away_score": game.away_score,
@@ -519,7 +569,7 @@ def true_historical_prediction_rows(
         (game.game_date, game.away_team, game.home_team): game
         for game in score_games
     }
-    x = frame.reindex(columns=result.feature_names, fill_value=0.0)
+    x = frame.reindex(columns=result.feature_names, fill_value=0.0).fillna(0.0)
     probabilities = result.model.predict_proba(x)[:, 1]
 
     rows = []
@@ -565,6 +615,7 @@ def print_prediction_table(rows: pd.DataFrame) -> None:
         return
 
     display = rows.copy()
+    display = display.drop(columns=["provenance", "model_id", "input_hash"], errors="ignore")
     for column in ["confidence", "home_win_probability", "market_probability", "edge"]:
         display[column] = display[column].map(format_probability)
     print(display.to_string(index=False))
@@ -588,10 +639,24 @@ def run_production_predictions(config_path: Path = CONFIG_PATH) -> pd.DataFrame:
     print(f"Found {len(games)} games. Loading prediction model...", flush=True)
     result, model_path, trained = load_or_train_production_model(config)
     rows = prediction_rows(config, result, games)
+    output_dir = PROJECT_ROOT / "reports" / "forecasts"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_stamp = cutoff_timestamp().strftime("%Y%m%dT%H%M%S%fZ")
+    artifact = output_dir / f"{run_stamp}.json"
+    snapshot_dir = PROJECT_ROOT / "data" / "processed" / "snapshots"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_path = snapshot_dir / f"{result.metadata['snapshot_hash']}.joblib"
+    if not snapshot_path.exists():
+        joblib.dump(result.history, snapshot_path)
+    artifact.write_text(json.dumps({"model": result.metadata, "snapshot_path": str(snapshot_path),
+                                   "predictions": rows.to_dict(orient="records")},
+                                   indent=2, default=str), encoding="utf-8")
 
     print(f"Seasons: {', '.join(config.seasons)}")
     print(f"Model: {model_path}")
     print(f"Model trained this run: {'yes' if trained else 'no'}")
+    print(f"Model training through: {result.metadata['training_end']}; data snapshot through: {result.metadata['snapshot_end']}")
+    print(f"Forecast inputs and provenance: {artifact}")
     print()
     print_prediction_table(rows)
     return rows
