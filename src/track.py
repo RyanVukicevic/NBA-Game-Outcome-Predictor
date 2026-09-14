@@ -5,6 +5,8 @@ import argparse
 from dataclasses import asdict
 import json
 from pathlib import Path
+import os
+import time
 
 from tracking import DB_PATH, Ledger, Policy, export_report
 
@@ -14,6 +16,15 @@ def main():
     parser.add_argument("--db", type=Path, default=DB_PATH)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
+    quota = commands.add_parser("quota-init", help="Configure the free monthly allowance once; resets automatically at 00:00 UTC on the 1st.")
+    quota.add_argument("--used", type=int, required=True, help="Current credits used, from your dashboard.")
+    eligibility = commands.add_parser("eligibility")
+    eligibility.add_argument("--model-id", required=True)
+    schedule_run = commands.add_parser("schedule", help="Preview due work; --execute runs one pass, --watch repeats it.")
+    schedule_run.add_argument("--model-path", type=Path, required=True)
+    schedule_run.add_argument("--config", type=Path, default=Path(__file__).resolve().parents[1] / "production_config.txt")
+    schedule_run.add_argument("--execute", action="store_true")
+    schedule_run.add_argument("--watch", action="store_true")
     imp = commands.add_parser("import-forecasts")
     imp.add_argument("paths", nargs="+", type=Path)
     collect = commands.add_parser("collect-odds")
@@ -46,6 +57,44 @@ def main():
                 print(f"{table}: {ledger.db.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0]}")
             print("Models:", ledger.rows("SELECT id FROM models"))
             print("Policies:", ledger.rows("SELECT * FROM policies"))
+            from budget import status
+            print("Quota:", status(ledger))
+        elif args.command == "quota-init":
+            from budget import configure, next_month, status
+            configure(ledger, next_month(), args.used, calendar_monthly=True)
+            print(status(ledger))
+        elif args.command == "eligibility":
+            from eligibility import EligibilityContext
+            print(json.dumps(EligibilityContext(ledger, args.model_id).record(), indent=2))
+        elif args.command == "schedule":
+            from scheduler import plan, tick, refresh_tracking
+            from budget import status
+            model_id = json.loads(args.model_path.with_suffix(".json").read_text())["model_id"]
+            if args.watch and not args.execute:
+                parser.error("--watch requires --execute; preview makes no API calls.")
+            if not args.execute:
+                print(json.dumps(dict(quota=status(ledger), plan=plan(ledger, model_id)), indent=2))
+                return
+            if not os.environ.get("ODDS_API_KEY"):
+                parser.error("Set ODDS_API_KEY locally before executing the scheduler.")
+            if not status(ledger)["ready"]:
+                parser.error("Configure quota with quota-init before executing the scheduler.")
+            while True:
+                try:
+                    force = any(p["status"] == "due" for p in plan(ledger, model_id))
+                    result = tick(ledger, model_id, refresh=lambda: refresh_tracking(ledger, args.model_path, args.config,
+                                                                                   force=force, expected_model_id=model_id))
+                    print(json.dumps(result), flush=True)
+                except (ValueError, RuntimeError) as exc:
+                    print(f"Scheduler stopped safely: {exc}", flush=True)
+                    return
+                if not args.watch:
+                    return
+                try:
+                    time.sleep(60)
+                except KeyboardInterrupt:
+                    print("Scheduler stopped.")
+                    return
         elif args.command == "import-forecasts":
             for path in args.paths:
                 print(path, ledger.import_forecasts(json.loads(path.read_text(encoding="utf-8"))))

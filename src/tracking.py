@@ -39,6 +39,11 @@ def decimal_odds(value: float, american=False) -> float:
     return value
 
 
+def american_odds(value: float) -> int:
+    value = decimal_odds(value)
+    return round((value - 1) * 100 if value >= 2 else -100 / (value - 1))
+
+
 @dataclass(frozen=True)
 class Policy:
     model_id: str
@@ -48,9 +53,11 @@ class Policy:
     prediction_max_age_hours: int = 24
     stake: float = 10.0
     minimum_ev: float = 0.03
-    version: int = 1
+    version: int = 2
 
     def __post_init__(self):
+        if self.version not in (1, 2):
+            raise ValueError("Unsupported paper policy version.")
         if not self.model_id or not self.bookmaker:
             raise ValueError("Pin a model and bookmaker for each policy.")
         if min(self.horizon_minutes, self.odds_max_age_minutes, self.prediction_max_age_hours) <= 0:
@@ -71,7 +78,7 @@ class Ledger:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1):
+        if version not in (0, 1, 2):
             raise ValueError(f"Unsupported tracking schema {version}")
         self.db.executescript("""
         CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, home TEXT NOT NULL, away TEXT NOT NULL);
@@ -105,7 +112,27 @@ class Ledger:
         CREATE TABLE IF NOT EXISTS actual_settlements(
             seq INTEGER PRIMARY KEY, wager_id TEXT REFERENCES actual_wagers(id), observed TEXT NOT NULL,
             status TEXT NOT NULL, payout REAL NOT NULL, reference TEXT NOT NULL);
-        PRAGMA user_version=1;
+        CREATE TABLE IF NOT EXISTS snapshot_games(
+            snapshot_hash TEXT NOT NULL, game_id TEXT NOT NULL, team TEXT NOT NULL,
+            game_date TEXT NOT NULL, points INTEGER NOT NULL,
+            PRIMARY KEY(snapshot_hash,game_id,team));
+        CREATE TABLE IF NOT EXISTS eligibility(
+            seq INTEGER PRIMARY KEY, game_id TEXT REFERENCES games(id), model_id TEXT NOT NULL,
+            observed TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS quota_cycles(
+            id INTEGER PRIMARY KEY, started TEXT NOT NULL, reset_at TEXT NOT NULL,
+            baseline_used INTEGER NOT NULL, allowance INTEGER NOT NULL DEFAULT 500);
+        CREATE TABLE IF NOT EXISTS quota_settings(name TEXT PRIMARY KEY,value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS api_requests(
+            id INTEGER PRIMARY KEY, cycle_id INTEGER REFERENCES quota_cycles(id),
+            started TEXT NOT NULL, finished TEXT, cost INTEGER NOT NULL,
+            status TEXT NOT NULL, purpose TEXT NOT NULL, headers TEXT);
+        CREATE TABLE IF NOT EXISTS scheduler_slots(
+            id TEXT PRIMARY KEY, game_id TEXT NOT NULL, model_id TEXT NOT NULL,
+            tipoff TEXT NOT NULL, horizon INTEGER NOT NULL, observed TEXT NOT NULL,
+            status TEXT NOT NULL, reason TEXT);
+        CREATE TABLE IF NOT EXISTS scheduler_leases(name TEXT PRIMARY KEY, owner TEXT NOT NULL, expires TEXT NOT NULL);
+        PRAGMA user_version=2;
         """)
 
     def __enter__(self):
@@ -116,6 +143,15 @@ class Ledger:
 
     def rows(self, sql, params=()):
         return [dict(r) for r in self.db.execute(sql, params)]
+
+    def record_history(self, history, snapshot_hash):
+        rows = []
+        for r in history.itertuples(index=False):
+            gid = str(r.GAME_ID).removesuffix(".0").zfill(10)
+            rows.append((snapshot_hash, gid, r.TEAM_ABBREVIATION,
+                         str(pd.Timestamp(r.GAME_DATE).date()), int(r.PTS)))
+        with self.db:
+            self.db.executemany("INSERT OR IGNORE INTO snapshot_games VALUES(?,?,?,?,?)", rows)
 
     def game(self, game_id, home, away):
         if not game_id or not home or not away or home == away:
@@ -243,6 +279,8 @@ class Ledger:
             if not schedules:
                 continue
             s = schedules[-1]
+            if policy.version >= 2 and schedules[0]["observed"] >= s["tipoff"]:
+                continue
             cutoff = utc(pd.Timestamp(s["tipoff"]) - pd.Timedelta(minutes=policy.horizon_minutes))
             if cutoff > now:
                 continue
@@ -262,6 +300,11 @@ class Ledger:
                 reason = "stale_prediction"
             if not reason and utc(json.loads(pred["payload"])["tipoff_at"]) != s["tipoff"]:
                 reason = "prediction_schedule_mismatch"
+            if not reason and policy.version >= 2:
+                from eligibility import EligibilityContext
+                eligibility = EligibilityContext(self, policy.model_id, cutoff).assess(gid)
+                if eligibility["status"] != "eligible":
+                    reason = "eligibility_" + eligibility["status"]
             if not reason and not quote:
                 reason = "missing_odds"
             if not reason and quote["status"] != "quoted":
@@ -317,7 +360,9 @@ class Ledger:
                         profit = bet["stake"] * (bet["odds"] - 1) if status == "win" else -bet["stake"]
                 output.append(dict(game_id=d["game_id"], home=d["home"], away=d["away"], cutoff=d["cutoff"],
                                    tipoff=p["tipoff"], strategy=strategy, status=status, reason=reason,
-                                   selection=side, odds=bet.get("odds"), stake=bet.get("stake", 0), profit=profit,
+                                   selection=side, odds=bet.get("odds"),
+                                   american_odds=american_odds(bet["odds"]) if bet.get("odds") else None,
+                                   stake=bet.get("stake", 0), profit=profit,
                                    probability=p["probability"], market_probability=p["market_probability"],
                                    home_win=int(winner == "home") if winner and not invalidated and not p["reason"] else None,
                                    settled_at=r["observed"] if r else None))

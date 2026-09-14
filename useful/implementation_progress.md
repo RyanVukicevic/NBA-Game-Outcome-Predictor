@@ -91,3 +91,46 @@ Boundaries and next work:
 - No NFL/UFC model, live betting, staking optimizer, or automatic execution.
 - The original ideas.txt user edits remain untouched. Operational details and
   agreed pregame/favorite benchmark scope are in useful/tracking_guide.md.
+
+## Milestone 3: Eligibility And Free-Plan Scheduling
+
+Implemented:
+
+- Non-destructive SQLite v2 migration; version-2 paper policies enforce both
+  teams' readiness using schedule/results/forecast data available at cutoff.
+- Full in-scope schedule import includes past and ongoing games, not just future
+  forecasts. Explicit canceled/postponed source labels are recorded.
+- Feature snapshot membership and scores, per-team incorporated game references,
+  blockers, and first observed eligibility per model/schedule version.
+- American-odds conversion in notebook displays and paper CSV exports, without
+  another API call. Moneylines remain the only collected betting market.
+- Shared manual/scheduler quota reservations: 12 credits per Eastern day, 450
+  per calendar month, 50-credit reserve. User confirmed first-of-month 00:00 UTC
+  resets; automatic rollover preserves the same-Eastern-day cap.
+- Batched T-65m/T-365m collection for T-60m/T-6h paper decisions; qualifying quote
+  reuse, primary-slot priority, one automatic attempt per slot, and missed-window
+  records. No post-cutoff backfilling.
+- CLI dry-run, one-pass execution, and optional minute-check watch loop; shared
+  worker lease prevents overlap. Missing key/quota configuration prevents startup.
+- Daily/near-window NBA data refresh, pinned weights/model identity, current-season
+  history rollover, raw snapshot archives, and no automatic model replacement.
+
+Verification uses offline collector fixtures rather than paid calls. The real
+database quota was initialized to the last known two used credits; provider
+headers reconcile external account use on subsequent requests. No Odds API
+credits, subscription purchases, or wagers were used during this phase.
+
+Known data limitation surfaced by the new guard: five neutral/ambiguous-home
+2025-26 games are excluded by the existing paired home/away pipeline, blocking
+six opening matchups. These are visibly awaiting data, not silently approved.
+IDs and details are in the tracking guide. Neutral-site feature/Elo handling
+needs a separate model/data correction. The scheduler is not an installed OS
+service and has not been started with a stored API credential.
+
+Final verification: 69 tests passed; all 15 demo code cells executed with no
+errors and current source/model identities matched. The real notebook exported
+41 American/decimal quote rows and showed 8 eligible, 6 awaiting-data, and 1,186
+waiting future games. Schema v2 migration preserved existing records. CLI
+scheduler preview returned no work due; the request journal remained empty.
+`pip check` passed. The free-plan guard is configured for 2026-10-01 00:00 UTC
+with two previously used credits as its initial baseline.

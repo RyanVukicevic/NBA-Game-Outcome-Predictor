@@ -13,6 +13,13 @@ compares flat-stake favorite, home, model-winner, and model-value strategies.
 Reports include profit, ROI, drawdown, monthly/season breakdowns, calibration,
 and descriptive uncertainty intervals. Actual wager receipts stay separate.
 
+Version-2 policies enforce both-teams-next-game readiness against the recorded
+feature snapshot. The demo displays blockers, first eligibility, American odds,
+and quota status. `track.py schedule --model-path models/demo.joblib` previews
+work without network requests; add `--execute --watch` to run the local paper
+scheduler after configuring the key. It uses T-60m/T-6h policies, shared request
+batching, and a 12-credit/day, 450-credit/month guard for the free plan.
+
 See [the tracking guide](useful/tracking_guide.md) for commands, API-key setup,
 cutoff/freshness rules, and accounting assumptions. The demo ends with real
 database counts plus an isolated synthetic accounting example, not a claimed

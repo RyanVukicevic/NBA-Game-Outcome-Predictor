@@ -316,7 +316,7 @@ def fetch_schedule_games(season: str) -> pd.DataFrame:
     raise ValueError(f"NBA schedule endpoint returned no usable schedule data: {detail}")
 
 
-def upcoming_games(config: ProductionConfig, today: date | None = None) -> list[UpcomingGame]:
+def upcoming_games(config: ProductionConfig, today: date | None = None, ledger=None) -> list[UpcomingGame]:
     today = today or date.today()
     if config.upcoming_days < 0:
         raise ValueError("upcoming_days must be zero or greater.")
@@ -326,6 +326,9 @@ def upcoming_games(config: ProductionConfig, today: date | None = None) -> list[
         [fetch_schedule_games(nba_season_label(year)) for year in season_years],
         ignore_index=True,
     )
+    if ledger is not None:
+        from eligibility import record_schedule
+        record_schedule(ledger, schedule, config.season_types)
     mask = (schedule["GAME_DATE"] >= today) & (schedule["GAME_DATE"] <= end_date)
     labels = schedule.reindex(columns=["GAME_LABEL", "GAME_SUBTYPE", "SERIES_TEXT"]).fillna("").astype(str).agg(" ".join, axis=1)
     is_playoffs = labels.str.contains("playoff|finals|first round|conference", case=False, regex=True)
@@ -339,7 +342,7 @@ def upcoming_games(config: ProductionConfig, today: date | None = None) -> list[
     supported &= ~labels.str.contains("preseason|all.star", case=False, regex=True)
     supported &= phase.isna() | phase.isin(config.season_types)
     if "STATUS" in schedule:
-        supported &= ~schedule["STATUS"].fillna("").str.contains("final", case=False)
+        supported &= ~schedule["STATUS"].fillna("").str.contains("final|postpon|cancel", case=False)
     if "STATUS_ID" in schedule:
         supported &= pd.to_numeric(schedule["STATUS_ID"], errors="coerce").eq(1)
     if "TIPOFF_AT" in schedule:
@@ -631,7 +634,9 @@ def run_production_predictions(config_path: Path = CONFIG_PATH) -> pd.DataFrame:
         f"(through {end_date:%B} {end_date.day}, {end_date.year}).",
         flush=True,
     )
-    games = upcoming_games(config, today=today)
+    from tracking import Ledger
+    with Ledger() as ledger:
+        games = upcoming_games(config, today=today, ledger=ledger)
     if not games:
         rows = pd.DataFrame()
         print_prediction_table(rows)
@@ -653,7 +658,12 @@ def run_production_predictions(config_path: Path = CONFIG_PATH) -> pd.DataFrame:
                                    indent=2, default=str), encoding="utf-8")
     from tracking import Ledger
     with Ledger() as ledger:
+        ledger.record_history(result.history, result.metadata["snapshot_hash"])
+        ledger.settle_logs(result.history)
         tracked = ledger.import_forecasts({"model": result.metadata, "predictions": rows.to_dict(orient="records")})
+        from eligibility import EligibilityContext
+        eligibility = EligibilityContext(ledger, result.metadata["model_id"]).record()
+        print(f"Next-game eligible: {sum(r['status'] == 'eligible' for r in eligibility)}")
     print(f"Pregame forecasts recorded in tracking database: {tracked}")
 
     print(f"Seasons: {', '.join(config.seasons)}")

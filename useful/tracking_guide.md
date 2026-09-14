@@ -1,8 +1,8 @@
 # Pregame Tracking And Paper Betting
 
 This is an NBA moneyline research workflow, not an execution service. It does
-not place bets, scrape sportsbook accounts, purchase data, or run in the
-background. No live-game features or odds are used. SQLite is included with
+not place bets, scrape sportsbook accounts, or purchase data. A local scheduler
+is available but runs only when explicitly started. No live-game features or odds are used. SQLite is included with
 Python, so no additional database installation is necessary.
 
 ## Quick Start
@@ -51,6 +51,13 @@ prints quota headers, and returns. Missing books/events invalidate older quotes;
 network failures do not invent a successful response. Full-feed ingestion is
 not suitable for a manually filtered event subset.
 
+All requests require the quota guard to be configured first. For a new database,
+run `track.py quota-init --used N`, replacing N with current dashboard usage.
+This PC was initialized with last verified usage of 2 credits. An active cycle
+cannot be reinitialized. Monthly resets are on the first at 00:00 UTC, as
+confirmed by the user; rollover is automatic. Provider headers reconcile other
+observed account usage. See the scheduler section below for the full limits.
+
 Provider events must match the NBA home/away abbreviations uniquely within
 15 minutes of the NBA tipoff. The live feed lists many expected starts 10 minutes
 later. Both times and their offset are retained, but NBA time remains the policy
@@ -80,9 +87,13 @@ are not replaced with an older favorable price. Skips are final for that policy.
 
 The collector must actually run before cutoffs. Refresh predictions during the
 day, collect odds within the freshness window before each cutoff, then decide.
-Repeating commands is safe. No Windows scheduled task was installed; until a
-scheduler is configured these commands only run when invoked. Do not expect
+Repeating commands is safe. No Windows scheduled task was installed; the local
+scheduler below must be started explicitly. Do not expect
 continuous data while the PC is asleep or this process is stopped.
+
+New policies use version 2 and require next-game eligibility at the decision
+cutoff. Version-1 historical policies and the isolated accounting demo retain
+their original rules; do not combine their scores with version 2.
 
 The strategies share the same eligible prediction/odds cohort:
 
@@ -136,8 +147,84 @@ feed alone does not prove cancellation. Record verified changes explicitly:
 A change before cutoff requires a matching new forecast and quote. A subsequent
 postponement, cancellation, or tipoff change voids that paper bet permanently;
 there is no second bet on that game within the policy. This conservative research
-rule is not a statement of any sportsbook's actual settlement rules. Automated
-postponement detection and a managed scheduler remain follow-on work.
+rule is not a statement of any sportsbook's actual settlement rules. Explicit
+NBA postponed/canceled labels are now imported during schedule refresh; absence
+alone still does not establish a cancellation.
+
+## Eligibility
+
+`track.py eligibility --model-id MODEL_ID` displays and records readiness:
+
+- `waiting`: either team has an earlier unresolved future/postponed in-scope game.
+- `awaiting_data`: a preceding game lacks a final result or its result is absent
+  from the forecast's exact feature snapshot; also used for missing forecasts.
+- `eligible`: both teams are ready, with recorded history and matching tipoff.
+- `closed`: started, finished, canceled, or postponed target game.
+
+Each record includes blockers, snapshot/forecast identity, latest incorporated
+game per team, and first observed eligibility for this schedule version/model.
+Eligibility is not a betting recommendation. Schedule import includes past and
+ongoing games so a new installation can identify preceding-game blockers.
+Checks cover configured regular-season/playoff games, not excluded preseason,
+play-in, or all-star games. Same-day results remain excluded by the daily policy.
+Missing or erroneous upstream schedule data remains a limitation.
+
+Real verification exposed five 2025-26 games with both raw team rows labeled
+away: 0022500147, 0022501229, 0022501230, 0022500578, 0022500602. The existing
+home/away training pipeline excludes these ambiguous/neutral-site rows, so they
+currently block affected teams' eligibility. This is an explicit conservative
+skip, not evidence that those games remain unplayed. Correct neutral-site
+feature/Elo handling is follow-on model/data work; do not bypass the guard.
+
+## Free-Plan Scheduler
+
+Preview (no NBA or odds requests):
+
+```powershell
+.\.venv\Scripts\python.exe src/track.py schedule --model-path models/demo.joblib
+```
+
+After setting the rotated key locally, run one pass with `--execute`, or keep
+checking due work every 60 seconds with:
+
+```powershell
+.\.venv\Scripts\python.exe src/track.py schedule --model-path models/demo.joblib --execute --watch
+```
+
+Ctrl+C stops the loop. Prefer a specific `models/versions/MODEL_ID.joblib` archive
+for longer experiments. Model identity is pinned: the scheduler refreshes feature
+history without refitting weights, includes the new current season when needed,
+and stops if the chosen file is replaced or code/runtime compatibility changes.
+Train and select a new policy intentionally after such a change.
+
+NBA schedules/results/forecasts refresh once per Eastern day and near due
+collection windows, with at least 15 minutes between successful refreshes.
+These are NBA calls, not Odds API credits. Raw data snapshots and exact forecast
+vectors are archived. Ingestion times are observed now, not backdated estimates.
+
+Primary collection is T-65 through T-60 minutes, decided at T-60. Secondary
+research collects T-365 through T-360, decided at T-6h. Only eligible games
+trigger requests. One request covers simultaneously due games and both books;
+a qualifying saved quote can cover another slot without a request. The full
+response can incidentally archive later/ineligible games, but those do not
+trigger requests or bets. Optional opening snapshots are not enabled yet.
+
+Manual CLI calls and scheduler requests share one guard in this database:
+12 credits per Eastern day, 450 per UTC calendar month, and a 50-credit reserve
+from the 500 allowance. Secondary requests yield to remaining primary slots
+that day. Atomic reservations protect concurrent local processes. Every attempt
+counts unless response headers report otherwise; unknown timeout/crash costs
+remain charged. Each slot permits one automatic attempt, with no retry loop.
+Headers reconcile observed external usage; unknown use by another client cannot
+be detected before a response, so use one ledger/key workflow for reliable limits.
+
+Missed windows, unavailable odds, and failures remain in the ledger. Sleeping or
+stopping the PC can miss opportunities; gaps never get post-cutoff prices.
+No paid upgrade, OS startup task, hosted service, or actual betting is enabled.
+Export performance using the existing `report` command.
+
+American odds are derived locally in the demo and paper-bet CSV; decimal odds
+remain canonical. Rounding may differ slightly from original sportsbook displays.
 
 ## Actual Receipts
 
@@ -154,6 +241,7 @@ separate file; no simulated fills are presented as actual profits.
 
 ## Demo
 
-The end of `src/demo.ipynb` shows real ledger counts and a separate, explicitly
+The end of `src/demo.ipynb` shows real counts, American/decimal odds, readiness,
+blockers, first eligibility, quota status, and a separate, explicitly
 synthetic 30-game accounting example. Its generated profit chart demonstrates
 the reporting code only; it is not model evidence or a real betting result.

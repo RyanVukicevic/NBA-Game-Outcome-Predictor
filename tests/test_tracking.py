@@ -24,7 +24,9 @@ class TrackingTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.ledger = Ledger(Path(self.tmp.name) / "test.sqlite3")
-        self.policy = Policy("model-1")
+        self.policy = Policy("model-1", version=1)
+        from budget import configure, next_month
+        configure(self.ledger, next_month(), 0, calendar_monthly=True)
         self.metadata = {"model_id": "model-1"}
         self.details = dict(game_id="0022600001", home="BOS", away="NYK", model_id="model-1",
                             home_win_probability=.65, issued_at=ISSUED, tipoff_at=START,
@@ -75,7 +77,7 @@ class TrackingTests(unittest.TestCase):
         self.quote(updated=ISSUED)
         self.ledger.decide(self.policy, CUTOFF)
         self.assertEqual(self.decision()["reason"], "stale_odds")
-        other = Policy("model-1", minimum_ev=.04)
+        other = Policy("model-1", minimum_ev=.04, version=1)
         self.quote(updated=QUOTE, status="unavailable")
         self.ledger.decide(other, CUTOFF)
         self.assertEqual(json.loads(self.ledger.rows("SELECT payload FROM decisions WHERE policy_id=?", (other.id,))[0]["payload"])["reason"], "odds_unavailable")
@@ -120,7 +122,7 @@ class TrackingTests(unittest.TestCase):
 
     def test_ties_and_value_threshold(self):
         self.quote(home=1.9, away=1.9)
-        self.ledger.decide(Policy("model-1", minimum_ev=.5), CUTOFF)
+        self.ledger.decide(Policy("model-1", minimum_ev=.5, version=1), CUTOFF)
         bets = self.decision()["bets"]
         self.assertIsNone(bets["favorite"]["selection"])
         self.assertIsNone(bets["model_value"]["selection"])

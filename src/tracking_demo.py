@@ -8,7 +8,7 @@ from tracking import Ledger, Policy, export_report, utc
 
 
 def run_tracking_demo(output_dir):
-    policy = Policy("synthetic-accounting-example")
+    policy = Policy("synthetic-accounting-example", version=1)
     with TemporaryDirectory() as temp, Ledger(Path(temp) / "demo.sqlite3") as ledger:
         for i in range(30):
             tipoff = pd.Timestamp("2026-01-01T23:00:00Z") + pd.Timedelta(days=i)

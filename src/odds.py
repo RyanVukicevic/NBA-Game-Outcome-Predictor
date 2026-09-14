@@ -84,25 +84,31 @@ def ingest_odds(ledger, events, received=None, bookmakers=("draftkings", "fandue
     return stats
 
 
-def collect_odds(ledger, bookmakers=("draftkings", "fanduel"), session=None):
+def collect_odds(ledger, bookmakers=("draftkings", "fanduel"), session=None, purpose="manual"):
     key = os.environ.get("ODDS_API_KEY")
     if not key:
         raise ValueError("Set ODDS_API_KEY locally. No request was made.")
     if not bookmakers or any(not b.replace("_", "").isalnum() for b in bookmakers):
         raise ValueError("Provide valid bookmaker keys.")
     session = session or requests
+    from budget import reserve, finish
+    request_id = reserve(ledger, purpose, cost=(len(bookmakers) + 9) // 10)
     try:
         response = session.get(API_URL, params=dict(apiKey=key, bookmakers=",".join(bookmakers),
                                markets="h2h", oddsFormat="decimal", dateFormat="iso"), timeout=30)
     except requests.RequestException:
+        finish(ledger, request_id)
         # requests exceptions can include the URL with its secret query parameter.
         raise RuntimeError("Odds request failed; check connectivity. Credentials omitted.") from None
     if response.status_code != 200:
+        finish(ledger, request_id, response.headers)
         raise RuntimeError(f"Odds API returned HTTP {response.status_code}; no data ingested. Check key/quota.")
     try:
         events = response.json()
     except ValueError:
+        finish(ledger, request_id, response.headers)
         raise RuntimeError("Odds API returned invalid JSON.") from None
+    finish(ledger, request_id, response.headers, success=True)
     received = utc()
     stats = ingest_odds(ledger, events, received, bookmakers)
     stats["credits_remaining"] = response.headers.get("x-requests-remaining")
