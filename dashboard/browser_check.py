@@ -21,6 +21,15 @@ def main():
         assert page.locator('.game-card').count()>0
         assert page.locator('svg.lucide').count()>10
         assert page.locator('img').evaluate_all('(images)=>images.every(i=>i.complete&&i.naturalWidth>0)')
+        accent_colors=page.evaluate('''() => ({
+            brand:getComputedStyle(document.querySelector('.brand-mark')).backgroundColor,
+            probability:getComputedStyle(document.querySelector('.probability-bar span:first-child')).backgroundColor,
+            navigation:getComputedStyle(document.querySelector('nav a.active')).color
+        })''')
+        assert len(set(accent_colors.values()))==1
+        assert page.locator('.team-side.picked').count()>0
+        assert page.locator('.pick-dot').count()>0
+        assert page.locator('.indicative-ev').first.inner_text().startswith('Best Indicative EV -')
         page.screenshot(path=str(OUTPUT/'games-desktop.png'),full_page=True)
         page.get_by_role('button',name='Use light mode',exact=True).click()
         assert page.locator('html').get_attribute('data-theme')=='light'
@@ -47,10 +56,33 @@ def main():
         page.get_by_role('button',name='Close details',exact=True).click()
         page.screenshot(path=str(OUTPUT/'games-dark-desktop.png'),full_page=True)
         page.locator('nav a[data-view="teams"]').click()
+        page.get_by_role('heading',name='Current Elo leaderboard',exact=True).wait_for()
+        assert page.locator('main h2').first.inner_text()=='Current Elo leaderboard'
         page.locator('#comparison-chart').wait_for()
         page.wait_for_function('() => document.querySelectorAll("#comparison-legend .legend span").length >= 5')
         assert page.locator('#comparison-chart').evaluate('(c)=>c.getContext("2d").getImageData(0,0,c.width,c.height).data.some((v,i)=>i%4===3&&v>0)')
         assert page.locator('#comparison-legend .legend span').count()>=5
+        assert page.get_by_label('Elo team group').input_value()=='top5'
+        assert page.get_by_label('Elo history range').input_value()=='1'
+        page.locator('#comparison-chart').scroll_into_view_if_needed()
+        box=page.locator('#comparison-chart').bounding_box()
+        tooltip_found=False
+        for x_part in range(1,10):
+            for y_part in range(1,10):
+                page.mouse.move(box['x']+box['width']*x_part/10,box['y']+box['height']*y_part/10)
+                if page.locator('.chart-tooltip:visible').count():
+                    tooltip_found=True
+                    break
+            if tooltip_found:
+                break
+        assert tooltip_found
+        assert 'Elo' in page.locator('.chart-tooltip:visible').inner_text()
+        page.get_by_label('Elo team group').select_option('custom')
+        page.locator('#team-picker:not(.hidden)').wait_for()
+        page.locator('#team-picker label',has_text='BOS').click()
+        page.locator('#team-picker label',has_text='NYK').click()
+        page.get_by_role('button',name='Generate Chart',exact=True).click()
+        page.wait_for_function('() => document.querySelectorAll("#comparison-legend .legend > span").length === 2')
         page.get_by_role('button',name='View BOS',exact=True).click()
         page.get_by_role('heading',name='Elo history',exact=True).wait_for()
         assert page.locator('#elo-chart').evaluate('(c)=>c.getContext("2d").getImageData(0,0,c.width,c.height).data.some((v,i)=>i%4===3&&v>0)')
@@ -95,16 +127,16 @@ def main():
         page.get_by_label('Search teams',exact=True).fill('')
         assert page.locator('.game-card.qualifies').count()==1
         assert page.locator('.game-card.no_bet').count()==1
-        page.get_by_role('button',name='Policy qualifies',exact=True).click()
+        page.get_by_role('button',name='Policy Qualifies',exact=True).click()
         assert page.locator('.game-card').count()==1
         assert page.locator('.game-card.qualifies').count()==1
-        page.get_by_role('button',name='No bet',exact=True).click()
+        page.get_by_role('button',name='No Bet',exact=True).click()
         assert page.locator('.game-card.no_bet').count()==1
-        page.get_by_role('button',name='All games',exact=True).click()
-        page.get_by_role('button',name='Model pick / underdog',exact=True).click()
+        page.get_by_role('button',name='All Games',exact=True).click()
+        page.get_by_role('button',name='Model Pick / Underdog',exact=True).click()
         assert page.locator('.game-card').count()>=1
         assert page.locator('.game-card .team-side.picked').count()>=1
-        page.get_by_role('button',name='All games',exact=True).click()
+        page.get_by_role('button',name='All Games',exact=True).click()
         page.get_by_label('Bookmaker',exact=True).select_option('fanduel')
         page.wait_for_function('() => !document.getElementById("refresh").disabled')
         assert page.get_by_label('Bookmaker',exact=True).input_value()=='fanduel'

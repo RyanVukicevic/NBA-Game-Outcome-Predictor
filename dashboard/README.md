@@ -31,8 +31,11 @@ Only load trusted local joblib artifacts.
   observed eligibility, forecast and market timeline, all model-version snapshots,
   American/decimal odds history, saved official decisions, CSV export.
 - **Teams & Elo:** exact saved production Elo, rank, recent movement, and a
-  color-coded multi-team time-series chart with top/bottom presets, custom groups,
-  and one-, two-, or three-season windows. Matchup details compare both teams.
+  color-coded multi-team time-series chart below the leaderboard. It defaults to
+  the top five for this season and supports top/bottom presets, custom groups,
+  and one-, two-, or three-season windows. Hover a line to identify its team,
+  date and rating. Custom selections update only when Generate Chart is pressed.
+  Matchup details compare both teams and also default to this season.
 - **Performance:** policy-isolated prospective accuracy, log loss, Brier,
   calibration, paper stake/profit/ROI/drawdown, baselines, value selection, and
   model-confidence strategies from 55% through 95% and stricter 5%/7% EV
@@ -55,6 +58,11 @@ bet. Red means the data is eligible and fresh but neither side qualifies. Gray
 means pending, missing, stale, closed, incompatible or past cutoff without an
 official decision. Expected return is `probability * decimal_odds - 1` and must
 strictly exceed the existing default policy threshold of 3%.
+
+The displayed market probability is no-vig: each side's raw implied probability
+is divided by the two-side total. Sportsbook prices normally sum above 100%; that
+extra overround is the vig, or built-in bookmaker margin. Removing it gives a
+cleaner market benchmark, while EV still uses the actual offered decimal payout.
 
 The default version-2 policy requires both-teams-next-game eligibility, odds no
 older than ten minutes, and forecasts no older than 24 hours. The official cutoff
