@@ -1,0 +1,162 @@
+[
+  {
+    "path": "assets/ATL.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/atl.png",
+    "sha256": "aacfe9bb2e3f69321bcd0b415a72d860fc97609c6c1f25985c6e70b78bd7f3cc"
+  },
+  {
+    "path": "assets/BOS.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+    "sha256": "0d0d6b85971b1d18428ba1161772b8c2f7e3ee103846ec4b4763bf0cc849ece0"
+  },
+  {
+    "path": "assets/CLE.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/cle.png",
+    "sha256": "f6eeede7fb286c450b80436ad8c21e430ff1eec73adb187d285cb2b8f681e063"
+  },
+  {
+    "path": "assets/NOP.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/no.png",
+    "sha256": "2c2bf09a59358e024c442d80f16707cd8b705863df9b6aa0ee478346561dc18a"
+  },
+  {
+    "path": "assets/CHI.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/chi.png",
+    "sha256": "3d70e58419859b30a8f2599f930ca502b175f9110c7cc1b2ab496787b8d445c2"
+  },
+  {
+    "path": "assets/DAL.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/dal.png",
+    "sha256": "d0d526f5400b7266883476071df0d24cdea0655a1641f0e5a2ea212e6c1b2b09"
+  },
+  {
+    "path": "assets/DEN.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/den.png",
+    "sha256": "33f295fabf1bc3ddb60dfcbefb35ab9a3a91c865752e4539778495aab27f535d"
+  },
+  {
+    "path": "assets/GSW.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/gs.png",
+    "sha256": "b623681ece167224ad4f51aef1ffa5a6f9e072af1cf1d6a6c158fd796e8d33ab"
+  },
+  {
+    "path": "assets/HOU.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png",
+    "sha256": "720e35c0d3b39af8d57ae66f00ae1058bd0f32b41fba1137f779af5bc439e011"
+  },
+  {
+    "path": "assets/LAC.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/lac.png",
+    "sha256": "d43253c0630f0d3d3a4c3c50ce92c9dbe8d5bf21e3bfd5326920c9487b26dbec"
+  },
+  {
+    "path": "assets/LAL.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/lal.png",
+    "sha256": "82fda3df51058c5aad8a52123868f43959017be0c39c886e9aefbb77e6c69c89"
+  },
+  {
+    "path": "assets/MIA.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png",
+    "sha256": "3ba9ff33e65ea12cef33cbf445163a8ec4063b4cbd42c6d2c63109b6d438575f"
+  },
+  {
+    "path": "assets/MIL.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/mil.png",
+    "sha256": "84fbddec67f59fa143f4fde9c2745ca15f3ad03594da4e677a4a1034aefa6f33"
+  },
+  {
+    "path": "assets/MIN.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/min.png",
+    "sha256": "ff53859dd29fb795e2f9c0a7fbaf808548731526d3fbcbb2fdfb842224c36979"
+  },
+  {
+    "path": "assets/BKN.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/bkn.png",
+    "sha256": "a407016d7c6a93b8b7b580b0de3f76caf80801bfd4fa66dc5badecc031164779"
+  },
+  {
+    "path": "assets/NYK.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+    "sha256": "35d2cc3780d172d427ed9bec8300bdcb91dd1065a3e1b6b015d46bb065ea35f5"
+  },
+  {
+    "path": "assets/ORL.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/orl.png",
+    "sha256": "ccb08b4b69603f4d41e6494b4a35dba8fd2e6a2a75012559d6844c2fc93e0963"
+  },
+  {
+    "path": "assets/IND.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png",
+    "sha256": "8dc8165d842c4b0d3b6f607ac9494a68189b2b06f48a3d820cd5b3997ae7c9da"
+  },
+  {
+    "path": "assets/PHI.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/phi.png",
+    "sha256": "3b96bf98838e3ea9e5d4fcccda3a98b69636346d2e50aabf1a5a4ba5aad7585e"
+  },
+  {
+    "path": "assets/PHX.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/phx.png",
+    "sha256": "5f8932efdb7595069610b11ec2f417d78a9213691c2ba21e2bd491c172397ead"
+  },
+  {
+    "path": "assets/POR.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/por.png",
+    "sha256": "635515bc924cef7432e9b362da558c41032daf6f4c41be2e1dc80a34360b6f18"
+  },
+  {
+    "path": "assets/SAC.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/sac.png",
+    "sha256": "38728eaaf98d73d00363ee570601d64a4caa7fe2590fb0df5afb1b9129d6e20b"
+  },
+  {
+    "path": "assets/SAS.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/sa.png",
+    "sha256": "cc3d33fa8faf34874258b10a8e0377d70b80c7900b4d90698f35edba9952fa1c"
+  },
+  {
+    "path": "assets/OKC.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/okc.png",
+    "sha256": "6b4801ae99c7dac7240d3b6ab3fbd4249a371473fc06517384e891834164a76e"
+  },
+  {
+    "path": "assets/TOR.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/tor.png",
+    "sha256": "9b466dfc1c47b22d6692569ea7f6cb1075a5bb3a35296b5053d6562842850b13"
+  },
+  {
+    "path": "assets/UTA.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
+    "sha256": "eb20ed36a17b49f65fa30627a2ab2aae5c6e3ee31ab9f03983c15c05270016e1"
+  },
+  {
+    "path": "assets/MEM.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/mem.png",
+    "sha256": "eb3f14246f67bccd4d8dd44be2f431992115beac8837c4b1be51d098b0a388bd"
+  },
+  {
+    "path": "assets/WAS.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
+    "sha256": "7135d5ce8b74481acf0a831a7a48c9c3e40af0fa1ef3973b1a3f3de4d7ad85f2"
+  },
+  {
+    "path": "assets/DET.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/det.png",
+    "sha256": "e5bcfd905add9ef97e06a9cc6bfdde49864fe91731625501c14bf861e84b8853"
+  },
+  {
+    "path": "assets/CHA.png",
+    "url": "https://a.espncdn.com/i/teamlogos/nba/500/cha.png",
+    "sha256": "95b3fe42c24e262fb5ce4f52c50f634ba9b7daeae88d090555f1ef301aa0a451"
+  },
+  {
+    "path": "vendor/lucide.js",
+    "url": "https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js",
+    "sha256": "3411692820cb8d47543f69496aa25fd603a358f4498046f41c508a5a3342210e"
+  },
+  {
+    "path": "vendor/lucide-LICENSE",
+    "url": "https://unpkg.com/lucide@0.468.0/LICENSE",
+    "sha256": "1e7290b35280a048667bbf0ebabac1c7fd52a75300e8b2946ac165715997f2bc"
+  }
+]

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>NBA Game Predictor</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/vendor/lucide.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <aside class="sidebar">
+    <a class="brand" href="#games"><span class="brand-mark"><i data-lucide="activity"></i></span><span>COURTSIDE<small>NBA GAME PREDICTOR</small><small class="developer">Developed by Ryan Vukicevic</small></span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <nav aria-label="Main navigation">
+      <a href="#games" data-view="games"><i data-lucide="layout-grid"></i>Games<span class="nav-count" id="nav-count"></span></a>
+      <a href="#teams" data-view="teams"><i data-lucide="list-ordered"></i>Teams &amp; Elo</a>
+      <a href="#performance" data-view="performance"><i data-lucide="chart-no-axes-combined"></i>Performance</a>
+      <a href="#history" data-view="history"><i data-lucide="history"></i>History</a>
+      <a href="#model" data-view="model"><i data-lucide="sliders-horizontal"></i>Model</a>
+      <a href="#system" data-view="system"><i data-lucide="server"></i>System</a>
+    </nav>
+    <div class="sidebar-bottom"><span class="dot"></span> Logistic regression<small>Production model &middot; Paper tracking</small></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="crumb">Games</strong></div><div class="top-actions"><span id="refreshed">Connecting</span><button class="icon-button" id="theme-toggle" title="Switch color theme" aria-label="Switch color theme"><i data-lucide="moon"></i></button><button class="icon-button" id="refresh" title="Refresh saved data" aria-label="Refresh saved data"><i data-lucide="refresh-cw"></i></button><label class="timezone-label"><i data-lucide="globe-2"></i><select id="timezone" aria-label="Display timezone"><option value="America/New_York">Eastern time</option><option value="local">My timezone</option><option value="UTC">UTC</option></select></label></div></header>
+    <main id="main" tabindex="-1"><div class="loading"><span class="spinner"></span>Loading your workspace</div></main>
+    <footer>NBA Game Predictor <span>Research estimates. Paper decisions are not executed wagers.</span></footer>
+  </div>
+  <dialog id="detail"><div id="detail-content"></div></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
