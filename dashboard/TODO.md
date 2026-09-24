@@ -2,6 +2,11 @@
 
 ## Hosting And Operations
 
+- Preferred hosted shape: Cloudflare Pages for the always-available static/PWA
+  shell, Supabase Postgres/Auth for durable user and prediction data, and a
+  scheduled Python container such as Google Cloud Run invoked by Cloud Scheduler.
+  The worker must be idempotent and record a heartbeat. Confirm quotas, billing
+  alerts, secrets, backups and restore behavior before calling it production.
 - Deploy the Python dashboard and scheduled collector on an always-on free tier
   only after confirming scheduled jobs, persistent storage, and outbound API
   requests are supported. A static host alone is insufficient.
@@ -15,6 +20,13 @@
   offline/stale-data indicators. Native iOS/Android packaging is optional later.
 - Add authenticated read-only remote access and notification preferences for
   locked decisions once hosting and user security are in place.
+- Add transactional email notifications through a provider such as Resend for
+  newly eligible model opportunities, official locked decisions, material line
+  movement, injury-status changes and stale/missed collectors. Store per-user
+  thresholds, quiet hours, bookmaker preferences and an auditable send log.
+- Never describe generic sportsbook promotions as model betting value. Promotion
+  ingestion requires a permitted source, exact eligibility/expiry terms and a
+  separate alert type; do not scrape authenticated sportsbook pages.
 
 ## Prospective Betting Research
 
@@ -31,8 +43,17 @@
 
 ## Data And Modeling
 
+- Add a Calibration view with raw-versus-candidate reliability curves, Brier and
+  log-loss trends, ECE with sample counts, calibration slope/intercept, confidence
+  coverage, season/phase slices and prospective drift alerts. Keep the September
+  24 beta calibrator as a frozen challenger until future games justify promotion.
 - Continue the separate player-availability research: roster identity, injuries,
   expected minutes, lineup strength, missing-player impact, and source licensing.
+- When player data is validated, show each matchup's timestamped status, projected
+  rotation, expected minutes with uncertainty, player-strength contribution,
+  replacement allocation, net lineup-strength difference and model probability
+  change. Unknown must remain distinct from available; assumptions belong in a
+  labeled scenario tool and never overwrite the official forecast.
 - Monitor calibration drift, bookmaker coverage, team aliases, postponed games,
   odds outliers, missing snapshots, and schedule changes.
 - Add confidence intervals and minimum-sample warnings to strategy performance.
@@ -46,3 +67,7 @@
   responsible-gaming, security, and audit requirements are satisfied.
 - Until then, keep the product as decision support and paper tracking with a human
   making every real-money decision.
+- Kalshi and Polymarket US expose official trading APIs for their event-contract
+  exchanges. Treat any future connector as a separate, opt-in execution service
+  with contract matching, jurisdiction checks, limits, kill switches, idempotency,
+  reconciliation and paper mode first. Never reuse sportsbook credentials.
