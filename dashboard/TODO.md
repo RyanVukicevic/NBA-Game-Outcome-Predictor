@@ -13,6 +13,10 @@
 - Move SQLite to durable hosted storage or a managed database before relying on
   the service. Add backups, migrations, scheduler heartbeat, alerting, secrets,
   authentication, HTTPS, and recovery checks.
+- Normalize or compact eligibility history before migration. The September 24
+  local audit found a 126.7 MB ledger with about 112.9 MB in repeated eligibility
+  JSON. Retain immutable status changes, blocker rows and references without
+  copying a large full payload per game/check; add retention and size monitoring.
 - Keep the Odds API quota guard and one account/project. Do not evade provider
   limits with extra accounts.
 - Make the hosted dashboard installable as a Progressive Web App so it can live
