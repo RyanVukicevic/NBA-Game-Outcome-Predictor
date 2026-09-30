@@ -1,8 +1,9 @@
-"""Run with python -m dashboard.server. Loopback-only, read-only local service."""
+"""Run the read-only dashboard locally or on an explicitly selected private IP."""
 from __future__ import annotations
 
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import ipaddress
 import json
 import mimetypes
 from pathlib import Path
@@ -14,11 +15,21 @@ from dashboard.service import Dashboard, clean
 STATIC = Path(__file__).parent / 'static'
 
 
-def handler(service):
+def private_bind_host(value):
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Host must be a numeric loopback or private IP address.") from exc
+    if address.is_unspecified or not (address.is_loopback or address.is_private):
+        raise argparse.ArgumentTypeError("Host must be a specific loopback or private IP address.")
+    return str(address)
+
+
+def handler(service, allowed_hosts=('127.0.0.1', 'localhost')):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             host = self.headers.get('Host', '').split(':')[0]
-            if host not in ('127.0.0.1', 'localhost'):
+            if host not in allowed_hosts:
                 self.send_error(403)
                 return
             url = urlparse(self.path)
@@ -80,14 +91,17 @@ def handler(service):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--host', type=private_bind_host, default='127.0.0.1',
+                        help='Specific loopback/private IP. Defaults to 127.0.0.1; never accepts 0.0.0.0.')
     parser.add_argument('--db', type=Path)
     parser.add_argument('--model', type=Path)
     args = parser.parse_args()
     kwargs = {'model_path': args.model}
     if args.db:
         kwargs['db_path'] = args.db
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), handler(Dashboard(**kwargs)))
-    print(f'NBA dashboard: http://127.0.0.1:{args.port} (read-only)', flush=True)
+    allowed_hosts = (args.host, 'localhost') if ipaddress.ip_address(args.host).is_loopback else (args.host,)
+    server = ThreadingHTTPServer((args.host, args.port), handler(Dashboard(**kwargs), allowed_hosts))
+    print(f'NBA dashboard: http://{args.host}:{args.port} (read-only)', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

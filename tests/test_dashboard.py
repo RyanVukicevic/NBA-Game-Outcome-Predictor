@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from dashboard.server import private_bind_host
 from dashboard.service import Dashboard, ReadLedger, STRATEGY_DETAILS, ev_strategy_rows, signal, threshold_strategy_rows
 from tracking import Ledger, Policy, utc
 
@@ -28,6 +29,13 @@ class DashboardTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_server_bind_is_limited_to_specific_private_addresses(self):
+        self.assertEqual(private_bind_host('127.0.0.1'), '127.0.0.1')
+        self.assertEqual(private_bind_host('192.168.1.208'), '192.168.1.208')
+        for value in ['0.0.0.0', '8.8.8.8', 'localhost']:
+            with self.subTest(value=value), self.assertRaises(Exception):
+                private_bind_host(value)
 
     def test_fresh_value_qualifies(self):
         s = signal(self.game,self.forecast,self.quote,{'status':'eligible'},self.policy,self.now)

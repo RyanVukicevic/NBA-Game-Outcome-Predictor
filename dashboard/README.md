@@ -16,6 +16,20 @@ If the port is occupied, choose another port. The server binds only to loopback.
 No Node.js installation or frontend build step is required.
 Existing project requirements provide the runtime dependencies.
 
+For a temporary phone preview on the same trusted Wi-Fi, bind to the PC's
+specific private IPv4 address instead of a wildcard:
+
+```powershell
+ipconfig
+.venv\Scripts\python.exe -B -m dashboard.server --host 192.168.1.208 --port 8766
+```
+
+Then open `http://192.168.1.208:8766` on the phone. The server rejects public,
+hostname and `0.0.0.0` binds and accepts only that exact Host header. This is not
+authenticated or encrypted; use it only on a trusted private network and stop it
+when finished. Windows may ask to allow Python on private networks. Public access
+still requires the hosted HTTPS/authentication architecture in `TODO.md`.
+
 The configured artifact is resolved from `production_config.txt` using the existing
 production model-path function. The default ledger is
 `data/tracking/predictions.sqlite3`. Optional `--model PATH` and `--db PATH` are
