@@ -64,6 +64,9 @@ Times can be displayed in Eastern, browser-local or UTC. Snapshot tables retain
 raw UTC fields at the end. Filters remain selected while navigating views. The
 theme and Games card/table preference persist in the browser. Dark mode is the
 default for a new browser; a user-selected light theme persists afterward.
+The Courtside mark is supplied as an SVG favicon, raster phone icons, and web-app
+manifest metadata so browsers can use the product identity for tabs, bookmarks,
+and supported home-screen installs.
 
 ## Card Contract
 

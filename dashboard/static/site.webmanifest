@@ -1,0 +1,15 @@
+{
+  "name": "Courtside NBA Game Predictor",
+  "short_name": "Courtside",
+  "description": "NBA forecasts, market value signals, Elo ratings, and prospective paper-strategy tracking.",
+  "start_url": "/#games",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101215",
+  "theme_color": "#101215",
+  "icons": [
+    {"src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
+  ]
+}

@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Courtside">
+  <rect width="512" height="512" rx="104" fill="#2268bd"/>
+  <path d="M74 264h88l54-144 84 272 55-128h83" fill="none" stroke="#fff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

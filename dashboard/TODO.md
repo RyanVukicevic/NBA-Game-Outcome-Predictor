@@ -39,6 +39,24 @@
   ingestion requires a permitted source, exact eligibility/expiry terms and a
   separate alert type; do not scrape authenticated sportsbook pages.
 
+## Product Completion
+
+- Make the hosted collector/database pipeline the source of truth, with visible
+  `last successful collection`, `next scheduled run`, and degraded/stale states.
+- Add a first-run preferences flow for timezone, bookmaker, notification rules,
+  paper bankroll, and strategy watchlist without hiding the default dashboard.
+- Add shareable matchup URLs and polished link-preview artwork while keeping
+  forecasts timestamped and reproducible.
+- Add a methodology/data-dictionary view, release notes, data-source/licensing
+  disclosure, responsible-use language, privacy policy, and terms before inviting
+  outside users.
+- Add product analytics limited to useful operational events, accessibility and
+  performance budgets, error reporting, uptime monitoring, and a public status
+  indicator. Avoid invasive tracking.
+- Treat authentication, user preferences, notification delivery, and any future
+  paid tier as separate product services; never place sportsbook credentials in
+  the browser or static export.
+
 ## Prospective Betting Research
 
 - Run the locked DraftKings T-60 policy for the entire season. Pre-register any
