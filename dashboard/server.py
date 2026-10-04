@@ -76,7 +76,7 @@ def handler(service, allowed_hosts=('127.0.0.1', 'localhost')):
                 self.wfile.write(body)
             except KeyError:
                 self.send_error(404, 'Record not found')
-            except (BrokenPipeError, ConnectionResetError):
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
                 pass
             except Exception:
                 traceback.print_exc()

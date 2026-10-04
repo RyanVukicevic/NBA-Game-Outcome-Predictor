@@ -165,6 +165,16 @@ class DashboardTests(unittest.TestCase):
         self.assertFalse(self.path.exists())
         self.assertEqual(overview['games'],[])
 
+    def test_overview_is_bounded_to_the_product_window(self):
+        self.seed()
+        with Ledger(self.path) as ledger:
+            ledger.game('far-future', 'LAL', 'GSW')
+            ledger.schedule('far-future', '2027-03-01T00:00:00Z', self.now)
+        service=Dashboard(self.path,Path(self.temp.name)/'absent.joblib')
+        with patch.object(service,'model_info',return_value={'available':True,'compatible':True,'model_id':'model'}):
+            games=service.overview(now=self.now)['games']
+        self.assertEqual([game['id'] for game in games], [self.game['id']])
+
     def test_overview_reports_hosted_worker_and_notification_health(self):
         self.seed()
         with Ledger(self.path) as ledger:

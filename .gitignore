@@ -1,5 +1,6 @@
 data/raw/
 data/processed/
+data/research_external/
 models/
 reports/
 __pycache__/

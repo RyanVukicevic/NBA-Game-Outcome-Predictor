@@ -23,6 +23,7 @@ from nba_api.stats.static.teams import get_teams
 
 CONFIDENCE_THRESHOLDS = (0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.95)
 EV_THRESHOLDS = (0.05, 0.07)
+DASHBOARD_DAYS = 90
 STRATEGY_DETAILS = {
     'favorite': dict(name='Market favorite', icon='landmark', rule='Bet the side with the shorter moneyline at the locked T-60 quote.', purpose='A market benchmark: can the model strategies beat simply backing the favorite?'),
     'home': dict(name='Always home', icon='house', rule='Bet the home team in every valid decision.', purpose='A control for the NBA home-court advantage, not a recommended wagering rule.'),
@@ -174,6 +175,8 @@ class Dashboard:
         self.model_path = Path(model_path) if model_path else production_model_path(load_production_config())
         self._model = None
         self._stamp = None
+        self._model_info = None
+        self._elo_series = None
         self._lock = threading.RLock()
 
     def model(self):
@@ -184,12 +187,17 @@ class Dashboard:
             if stamp != self._stamp:
                 self._model = load_training_result(self.model_path)
                 self._stamp = stamp
+                self._model_info = None
+                self._elo_series = None
             return self._model
 
     def model_info(self):
         r = self.model()
         if r is None:
             return dict(available=False, reason='Configured production artifact is missing', features=[], teams=[])
+        with self._lock:
+            if self._model_info is not None:
+                return self._model_info
         meta = r.metadata
         compatible = meta.get('implementation_id') == implementation_id() and meta.get('runtime') == runtime_versions()
         table = feature_importance_table(r.deployment_model, r.feature_names)
@@ -202,13 +210,17 @@ class Dashboard:
                                   change=float(row['elo_change_last_5']),
                                   last_game=str(history.GAME_DATE.max().date()), wins=int(recent.WL.eq('W').sum()),
                                   losses=int(recent.WL.eq('L').sum())))
-        return clean(dict(available=True, compatible=compatible, model_id=meta['model_id'],
-                         name='Logistic regression', artifact=self.model_path.name, metadata=meta,
-                         features=table, teams=teams, intercept=float(r.deployment_model.named_steps['logistic'].intercept_[0]),
-                         historical_metrics=r.metrics))
+        output = clean(dict(available=True, compatible=compatible, model_id=meta['model_id'],
+                            name='Logistic regression', artifact=self.model_path.name, metadata=meta,
+                            features=table, teams=teams, intercept=float(r.deployment_model.named_steps['logistic'].intercept_[0]),
+                            historical_metrics=r.metrics))
+        with self._lock:
+            self._model_info = output
+        return output
 
     def overview(self, bookmaker='draftkings', now=None):
         now = utc(now)
+        horizon = pd.Timestamp(now) + pd.Timedelta(days=DASHBOARD_DAYS)
         model = self.model_info()
         model_id = model.get('model_id', 'unavailable')
         policy = Policy(model_id, bookmaker=bookmaker)
@@ -232,7 +244,8 @@ class Dashboard:
                 payload = json.loads(row['payload'])
                 firsts.setdefault((row['game_id'], payload.get('schedule_seq')), row['observed'])
             for gid, game in context.games.items():
-                if game['tipoff'] < utc(pd.Timestamp(now) - pd.Timedelta(days=1)):
+                tipoff = pd.Timestamp(game['tipoff'])
+                if tipoff < pd.Timestamp(now) - pd.Timedelta(days=1) or tipoff > horizon:
                     continue
                 f, q = context.forecasts.get(gid), odds.get(gid)
                 readiness = context.assess(gid)
@@ -363,26 +376,40 @@ class Dashboard:
         known = set(r.history.TEAM_ABBREVIATION) if r is not None else set()
         if not abbreviations or len(abbreviations) > 10 or any(team not in known for team in abbreviations):
             raise KeyError(','.join(abbreviations))
-        from features import add_team_features, build_matchup_frame
         from elo import add_elo_features
-        team_games = add_team_features(r.history, rolling_window=r.rolling_window, min_periods=r.min_periods,
-            rolling_history=r.rolling_history, use_prior_season_features=r.use_prior_season_features, prior_decay_games=r.prior_decay_games)
-        matchups = build_matchup_frame(team_games, rolling_window=r.rolling_window, require_features=False)
-        frame, latest = add_elo_features(matchups, k_factor=r.elo_k, playoff_k_factor=r.elo_playoff_k,
-                                        home_advantage=r.elo_home_advantage, carryover=r.elo_carryover)
-        output = {team: [] for team in abbreviations}
-        for team in abbreviations:
-            if not np.isclose(latest.loc[team,'ELO'], r.latest_elos.loc[team,'ELO']):
-                raise ValueError('Replayed Elo differs from the production snapshot')
-        selected = frame.loc[frame.HOME_TEAM.isin(abbreviations)|frame.AWAY_TEAM.isin(abbreviations)]
-        for row in selected.itertuples():
-            k = r.elo_playoff_k if row.IS_PLAYOFFS and r.elo_playoff_k is not None else r.elo_k
-            home_delta = k * (row.HOME_WIN - row.elo_expected_home_win)
-            for team, pre, delta in ((row.HOME_TEAM, row.home_elo_pre, home_delta),
-                                     (row.AWAY_TEAM, row.away_elo_pre, -home_delta)):
-                if team in output:
-                    output[team].append(dict(date=str(pd.Timestamp(row.GAME_DATE).date()), game_id=row.GAME_ID,
-                                             elo=pre+delta, change=delta))
+        with self._lock:
+            if self._elo_series is None:
+                history = r.history
+                home = history.loc[history['IS_HOME'].eq(1)].set_index('GAME_ID')
+                away = history.loc[history['IS_HOME'].eq(0)].set_index('GAME_ID')
+                game_ids = home.index.intersection(away.index, sort=False)
+                if len(game_ids) * 2 != len(history):
+                    raise ValueError('Production history does not contain one home and away row per game')
+                matchups = pd.DataFrame({
+                    'GAME_ID': game_ids,
+                    'GAME_DATE': home.loc[game_ids, 'GAME_DATE'].to_numpy(),
+                    'SEASON_ID': home.loc[game_ids, 'SEASON_ID'].to_numpy(),
+                    'HOME_TEAM': home.loc[game_ids, 'TEAM_ABBREVIATION'].to_numpy(),
+                    'AWAY_TEAM': away.loc[game_ids, 'TEAM_ABBREVIATION'].to_numpy(),
+                    'HOME_WIN': home.loc[game_ids, 'WL'].eq('W').astype(int).to_numpy(),
+                    'IS_PLAYOFFS': home.loc[game_ids, 'SEASON_TYPE'].eq('Playoffs').astype(int).to_numpy(),
+                    'IS_NEUTRAL': home.loc[game_ids, 'IS_NEUTRAL'].astype(bool).to_numpy(),
+                })
+                frame, latest = add_elo_features(
+                    matchups, k_factor=r.elo_k, playoff_k_factor=r.elo_playoff_k,
+                    home_advantage=r.elo_home_advantage, carryover=r.elo_carryover)
+                if not np.allclose(latest['ELO'].sort_index(), r.latest_elos['ELO'].sort_index()):
+                    raise ValueError('Replayed Elo differs from the production snapshot')
+                output = {team: [] for team in known}
+                for row in frame.itertuples():
+                    active_k = r.elo_playoff_k if row.IS_PLAYOFFS and r.elo_playoff_k is not None else r.elo_k
+                    home_delta = active_k * (row.HOME_WIN - row.elo_expected_home_win)
+                    for team, pre, delta in ((row.HOME_TEAM, row.home_elo_pre, home_delta),
+                                             (row.AWAY_TEAM, row.away_elo_pre, -home_delta)):
+                        output[team].append(dict(date=str(pd.Timestamp(row.GAME_DATE).date()), game_id=row.GAME_ID,
+                                                 elo=pre + delta, change=delta))
+                self._elo_series = output
+            output = self._elo_series
         return clean(dict(series=[dict(team=team, points=output[team]) for team in abbreviations]))
 
     def team(self, abbreviation):

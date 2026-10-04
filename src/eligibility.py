@@ -35,6 +35,12 @@ class EligibilityContext:
         self.forecasts = {r["game_id"]: r for r in ledger.rows("""SELECT f.* FROM forecasts f WHERE f.model_id=?
             AND f.id=(SELECT id FROM forecasts WHERE game_id=f.game_id AND model_id=? AND issued<=? AND received<=?
             ORDER BY issued DESC,id DESC LIMIT 1)""", (model_id, model_id, self.now, self.now))}
+        self.team_games = {}
+        for game in self.games.values():
+            for team in (game["home"], game["away"]):
+                self.team_games.setdefault(team, []).append(game)
+        for games in self.team_games.values():
+            games.sort(key=lambda game: (game["tipoff"], game["id"]))
         self.snapshots = {}
 
     def assess(self, game_id):
@@ -48,16 +54,23 @@ class EligibilityContext:
         out["forecast_id"] = forecast["id"] if forecast else None
         snapshot = details.get("snapshot_hash")
         if snapshot not in self.snapshots:
-            self.snapshots[snapshot] = self.ledger.rows("SELECT * FROM snapshot_games WHERE snapshot_hash=?", (snapshot,))
-        history = self.snapshots[snapshot]
-        members = {(r["game_id"], r["team"]): r for r in history}
+            history = self.ledger.rows("SELECT * FROM snapshot_games WHERE snapshot_hash=?", (snapshot,))
+            members = {(row["game_id"], row["team"]): row for row in history}
+            latest = {}
+            for row in history:
+                current = latest.get(row["team"])
+                if current is None or (row["game_date"], row["game_id"]) > (current["game_date"], current["game_id"]):
+                    latest[row["team"]] = row
+            self.snapshots[snapshot] = members, latest
+        members, latest = self.snapshots[snapshot]
         for team in (g["home"], g["away"]):
-            team_history = [r for r in history if r["team"] == team]
-            out["latest_incorporated"][team] = max(team_history, key=lambda r: (r["game_date"], r["game_id"])) if team_history else None
-            for previous in self.games.values():
-                if previous["id"] == game_id or team not in (previous["home"], previous["away"]):
+            out["latest_incorporated"][team] = latest.get(team)
+            for previous in self.team_games.get(team, []):
+                if previous["tipoff"] > g["tipoff"]:
+                    break
+                if previous["id"] == game_id:
                     continue
-                if previous["tipoff"] > g["tipoff"] or previous["status"] == "canceled":
+                if previous["status"] == "canceled":
                     continue
                 result = self.results.get(previous["id"])
                 state = None

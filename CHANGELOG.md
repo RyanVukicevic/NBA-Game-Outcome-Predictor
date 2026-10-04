@@ -20,6 +20,8 @@
   from about 127 MB to 67 MB without changing dashboard output.
 - Hosted snapshots preserve scheduler health instead of labeling every deployment
   as a local-only dashboard.
+- Dashboard reads are bounded to the 90-day product window; indexed eligibility
+  lookups and cached direct Elo replay keep local and static exports responsive.
 
 ### Boundaries
 
