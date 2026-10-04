@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import zipfile
 
 import pandas as pd
 
@@ -13,11 +14,22 @@ from dashboard.service import Dashboard, clean, utc
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = Path(__file__).parent / "static"
 DEFAULT_OUTPUT = Path(__file__).parent / "public"
+DEFAULT_ARCHIVE = Path(__file__).parent / "courtside-cloudflare.zip"
 
 
 def write_json(path: Path, value) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(clean(value), ensure_ascii=True, separators=(",", ":")), encoding="utf-8")
+
+
+def build_archive(source: Path, archive: Path = DEFAULT_ARCHIVE) -> Path:
+    """Create a portable Pages upload; POSIX member paths matter on Windows."""
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
+        for path in sorted(source.rglob("*")):
+            if path.is_file():
+                bundle.write(path, path.relative_to(source).as_posix())
+    return archive
 
 
 def export_snapshot(output: Path = DEFAULT_OUTPUT, service=None, days: int = 90) -> dict:
@@ -88,12 +100,14 @@ def export_snapshot(output: Path = DEFAULT_OUTPUT, service=None, days: int = 90)
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
     parser.add_argument("--days", type=int, default=90)
     args = parser.parse_args()
     if not 1 <= args.days <= 180:
         parser.error("--days must be between 1 and 180")
     summary = export_snapshot(args.output, days=args.days)
-    print(f"Exported {summary['games']} games to {args.output} at {summary['generated_at']}")
+    archive = build_archive(args.output, args.archive)
+    print(f"Exported {summary['games']} games to {args.output} and {archive} at {summary['generated_at']}")
 
 
 if __name__ == "__main__":

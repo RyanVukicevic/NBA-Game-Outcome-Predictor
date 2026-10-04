@@ -129,7 +129,10 @@ raw SQLite ledger, model artifact, environment file, or provider credentials:
 ```
 
 This writes the next 90 days and supporting read-only views to the ignored
-`dashboard/public/` directory. Local mode continues to use the Python API; the
+`dashboard/public/` directory and creates `dashboard/courtside-cloudflare.zip`
+with portable nested paths. Do not repackage it with PowerShell
+`Compress-Archive`, which writes Windows path separators that Cloudflare's
+dashboard uploader may flatten. Local mode continues to use the Python API; the
 exported copy uses bounded JSON files and identifies itself as a published
 snapshot in System. Deploy `dashboard/public` to Cloudflare Pages. Pages provides
 a free `*.pages.dev` URL; a purchased domain can later point `www` at that site.

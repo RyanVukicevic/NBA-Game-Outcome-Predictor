@@ -8,11 +8,12 @@ import sys
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from dashboard.server import private_bind_host
-from dashboard.export_static import export_snapshot
+from dashboard.export_static import build_archive, export_snapshot
 from dashboard.service import Dashboard, ReadLedger, STRATEGY_DETAILS, ev_strategy_rows, signal, threshold_strategy_rows
 from tracking import Ledger, Policy, utc
 
@@ -59,6 +60,11 @@ class DashboardTests(unittest.TestCase):
             self.assertFalse((output / '.env').exists())
             hosted = json.loads((output / 'data/overview/draftkings.json').read_text())
             self.assertIn('published snapshot', hosted['system']['hosting'].lower())
+            archive = build_archive(output, Path(directory) / 'site.zip')
+            with zipfile.ZipFile(archive) as bundle:
+                names = bundle.namelist()
+            self.assertIn('data/games/draftkings.json', names)
+            self.assertFalse(any('\\' in name for name in names))
 
     def test_fresh_value_qualifies(self):
         s = signal(self.game,self.forecast,self.quote,{'status':'eligible'},self.policy,self.now)
