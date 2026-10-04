@@ -3,7 +3,7 @@ import json
 
 import pandas as pd
 
-from tracking import encoded, utc
+from tracking import utc
 
 
 def record_schedule(ledger, frame, season_types, observed=None):
@@ -79,6 +79,7 @@ class EligibilityContext:
             out["status"] = "awaiting_data"
         else:
             out["status"] = "eligible"
+        out["blockers"].sort(key=lambda b: (b["team"], b["tipoff"], b["game_id"], b["status"]))
         return out
 
     def record(self):
@@ -87,15 +88,7 @@ class EligibilityContext:
             if game["tipoff"] <= self.now:
                 continue
             state = self.assess(gid)
-            previous = self.ledger.rows("SELECT * FROM eligibility WHERE game_id=? AND model_id=? ORDER BY seq DESC LIMIT 1",
-                                        (gid, self.model_id))
-            payload = encoded(state)
-            if not previous or previous[0]["payload"] != payload:
-                if previous and previous[0]["observed"] > self.now:
-                    raise ValueError("Cannot backdate eligibility observations.")
-                with self.ledger.db:
-                    self.ledger.db.execute("INSERT INTO eligibility(game_id,model_id,observed,status,payload) VALUES(?,?,?,?,?)",
-                                           (gid, self.model_id, self.now, state["status"], payload))
+            self.ledger.record_eligibility(state, self.now)
             eligible = self.ledger.rows("SELECT observed,payload FROM eligibility WHERE game_id=? AND model_id=? AND status='eligible' AND observed<=? ORDER BY observed,seq",
                                        (gid, self.model_id, self.now))
             state["first_eligible_at"] = next((r["observed"] for r in eligible

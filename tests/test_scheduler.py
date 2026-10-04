@@ -92,6 +92,24 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(first["first_eligible_at"], utc(DUE))
         self.assertEqual(second["first_eligible_at"], utc(DUE))
         self.assertEqual(len(self.l.rows("SELECT * FROM eligibility")), 1)
+        row = self.l.rows("SELECT * FROM eligibility")[0]
+        self.assertNotIn("blockers", json.loads(row["payload"]))
+        self.assertEqual(self.l.eligibility_state(row)["status"], "eligible")
+
+    def test_compaction_rehydrates_legacy_blockers_without_changing_state(self):
+        self.previous("2026-10-20T22:00:00Z")
+        state = self.assess()
+        with self.l.db:
+            self.l.db.execute("INSERT INTO eligibility(game_id,model_id,observed,status,payload) VALUES(?,?,?,?,?)",
+                              ("next", "m", DUE, state["status"], json.dumps(state, sort_keys=True)))
+        before = self.l.eligibility_state(self.l.rows("SELECT * FROM eligibility")[0])
+        summary = self.l.compact_eligibility()
+        row = self.l.rows("SELECT * FROM eligibility")[0]
+        after = self.l.eligibility_state(row)
+        self.assertEqual(self.l._eligibility_signature(before), self.l._eligibility_signature(after))
+        self.assertEqual(summary["rows_compacted"], 1)
+        self.assertGreater(summary["blockers"], 0)
+        self.assertNotIn("blockers", json.loads(row["payload"]))
 
     def test_new_policy_gates_and_preserves_legacy(self):
         self.previous()
@@ -204,7 +222,7 @@ class SchedulerTests(unittest.TestCase):
         self.l.db.execute("PRAGMA user_version=1")
         self.l.db.commit()
         with Ledger(self.path) as other:
-            self.assertEqual(other.db.execute("PRAGMA user_version").fetchone()[0],2)
+            self.assertEqual(other.db.execute("PRAGMA user_version").fetchone()[0],3)
             self.assertEqual(len(other.rows("SELECT * FROM forecasts")),1)
 
     def test_full_schedule_import_retains_prior_final_blocker(self):

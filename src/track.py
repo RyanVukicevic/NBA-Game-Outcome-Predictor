@@ -20,6 +20,8 @@ def main():
     quota.add_argument("--used", type=int, required=True, help="Current credits used, from your dashboard.")
     eligibility = commands.add_parser("eligibility")
     eligibility.add_argument("--model-id", required=True)
+    compact = commands.add_parser("compact-ledger", help="Deduplicate legacy eligibility blockers; back up the database first.")
+    compact.add_argument("--vacuum", action="store_true", help="Reclaim free pages after the transactional rewrite.")
     schedule_run = commands.add_parser("schedule", help="Preview due work; --execute runs one pass, --watch repeats it.")
     schedule_run.add_argument("--model-path", type=Path, required=True)
     schedule_run.add_argument("--config", type=Path, default=Path(__file__).resolve().parents[1] / "production_config.txt")
@@ -66,6 +68,8 @@ def main():
         elif args.command == "eligibility":
             from eligibility import EligibilityContext
             print(json.dumps(EligibilityContext(ledger, args.model_id).record(), indent=2))
+        elif args.command == "compact-ledger":
+            print(json.dumps(ledger.compact_eligibility(vacuum=args.vacuum), indent=2))
         elif args.command == "schedule":
             from scheduler import plan, tick, refresh_tracking
             from budget import status

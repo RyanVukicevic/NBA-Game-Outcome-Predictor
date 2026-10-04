@@ -78,7 +78,7 @@ class Ledger:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2):
+        if version not in (0, 1, 2, 3):
             raise ValueError(f"Unsupported tracking schema {version}")
         self.db.executescript("""
         CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, home TEXT NOT NULL, away TEXT NOT NULL);
@@ -119,6 +119,12 @@ class Ledger:
         CREATE TABLE IF NOT EXISTS eligibility(
             seq INTEGER PRIMARY KEY, game_id TEXT REFERENCES games(id), model_id TEXT NOT NULL,
             observed TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS eligibility_game ON eligibility(game_id, model_id, observed);
+        CREATE TABLE IF NOT EXISTS eligibility_blocker_sets(id TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS eligibility_blockers(
+            set_id TEXT REFERENCES eligibility_blocker_sets(id), position INTEGER NOT NULL,
+            team TEXT NOT NULL, game_id TEXT NOT NULL, tipoff TEXT NOT NULL, status TEXT NOT NULL,
+            PRIMARY KEY(set_id, position));
         CREATE TABLE IF NOT EXISTS quota_cycles(
             id INTEGER PRIMARY KEY, started TEXT NOT NULL, reset_at TEXT NOT NULL,
             baseline_used INTEGER NOT NULL, allowance INTEGER NOT NULL DEFAULT 500);
@@ -132,7 +138,7 @@ class Ledger:
             tipoff TEXT NOT NULL, horizon INTEGER NOT NULL, observed TEXT NOT NULL,
             status TEXT NOT NULL, reason TEXT);
         CREATE TABLE IF NOT EXISTS scheduler_leases(name TEXT PRIMARY KEY, owner TEXT NOT NULL, expires TEXT NOT NULL);
-        PRAGMA user_version=2;
+        PRAGMA user_version=3;
         """)
 
     def __enter__(self):
@@ -143,6 +149,72 @@ class Ledger:
 
     def rows(self, sql, params=()):
         return [dict(r) for r in self.db.execute(sql, params)]
+
+    @staticmethod
+    def _eligibility_signature(state):
+        blockers = sorted(state.get("blockers", []), key=lambda b: (b["team"], b["tipoff"], b["game_id"], b["status"]))
+        return dict(status=state["status"], schedule_seq=state.get("schedule_seq"),
+                    forecast_id=state.get("forecast_id"), latest_incorporated=state.get("latest_incorporated", {}),
+                    blockers=blockers)
+
+    def eligibility_state(self, row):
+        """Rehydrate either a legacy inline payload or a compact schema-v3 row."""
+        payload = json.loads(row["payload"])
+        blockers = payload.get("blockers")
+        blocker_set_id = payload.get("blocker_set_id")
+        if blockers is None and blocker_set_id:
+            blockers = self.rows("""SELECT team,game_id,tipoff,status FROM eligibility_blockers
+                WHERE set_id=? ORDER BY position""", (blocker_set_id,))
+        return dict(game_id=row["game_id"], model_id=row["model_id"], status=row["status"],
+                    blockers=blockers or [], latest_incorporated=payload.get("latest_incorporated", {}),
+                    schedule_seq=payload.get("schedule_seq"), forecast_id=payload.get("forecast_id"))
+
+    def _compact_eligibility_payload(self, state):
+        blockers = self._eligibility_signature(state)["blockers"]
+        blocker_set_id = None
+        if blockers:
+            blocker_set_id = digest(["eligibility-blockers-v1", blockers])
+            self.db.execute("INSERT OR IGNORE INTO eligibility_blocker_sets VALUES(?)", (blocker_set_id,))
+            self.db.executemany("""INSERT OR IGNORE INTO eligibility_blockers
+                (set_id,position,team,game_id,tipoff,status) VALUES(?,?,?,?,?,?)""",
+                [(blocker_set_id, i, b["team"], b["game_id"], b["tipoff"], b["status"])
+                 for i, b in enumerate(blockers)])
+        return encoded(dict(schedule_seq=state.get("schedule_seq"), forecast_id=state.get("forecast_id"),
+                            latest_incorporated=state.get("latest_incorporated", {}), blocker_set_id=blocker_set_id))
+
+    def record_eligibility(self, state, observed):
+        previous = self.rows("SELECT * FROM eligibility WHERE game_id=? AND model_id=? ORDER BY seq DESC LIMIT 1",
+                             (state["game_id"], state["model_id"]))
+        if previous and previous[0]["observed"] > observed:
+            raise ValueError("Cannot backdate eligibility observations.")
+        if previous and self._eligibility_signature(self.eligibility_state(previous[0])) == self._eligibility_signature(state):
+            return False
+        with self.db:
+            payload = self._compact_eligibility_payload(state)
+            self.db.execute("""INSERT INTO eligibility(game_id,model_id,observed,status,payload)
+                VALUES(?,?,?,?,?)""", (state["game_id"], state["model_id"], observed, state["status"], payload))
+        return True
+
+    def compact_eligibility(self, vacuum=False):
+        """Rewrite legacy inline blocker payloads while retaining every observation."""
+        changed = 0
+        before = self.path.stat().st_size if self.path.exists() else 0
+        with self.db:
+            for row in self.rows("SELECT * FROM eligibility ORDER BY seq"):
+                payload = json.loads(row["payload"])
+                if "blockers" not in payload:
+                    continue
+                state = self.eligibility_state(row)
+                compact = self._compact_eligibility_payload(state)
+                self.db.execute("UPDATE eligibility SET payload=? WHERE seq=?", (compact, row["seq"]))
+                changed += 1
+        if vacuum and changed:
+            self.db.execute("VACUUM")
+        after = self.path.stat().st_size if self.path.exists() else 0
+        return dict(rows_compacted=changed,
+                    blocker_sets=self.db.execute("SELECT COUNT(*) FROM eligibility_blocker_sets").fetchone()[0],
+                    blockers=self.db.execute("SELECT COUNT(*) FROM eligibility_blockers").fetchone()[0],
+                    bytes_before=before, bytes_after=after)
 
     def record_history(self, history, snapshot_hash):
         rows = []
