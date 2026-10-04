@@ -2,6 +2,13 @@
 
 ## Hosting And Operations
 
+- A verified Cloudflare Pages static-snapshot exporter now exists in
+  `dashboard/export_static.py`. The initial snapshot is suitable for review from
+  any device, but it is public unless Cloudflare Access is configured and it is
+  not the live collector. Replace the manual
+  publication step with the hosted database/worker pipeline below before the
+  season workflow depends on it.
+
 - Preferred hosted shape: Cloudflare Pages for the always-available static/PWA
   shell, Supabase Postgres/Auth for durable user and prediction data, and a
   scheduled Python container such as Google Cloud Run invoked by Cloud Scheduler.

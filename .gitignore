@@ -7,6 +7,8 @@ __pycache__/
 .venv/
 .ipynb_checkpoints/
 data/tracking/
+dashboard/public/
+dashboard/courtside-cloudflare.zip
 .env
 .env.*
 *.sqlite3

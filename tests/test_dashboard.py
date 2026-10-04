@@ -12,6 +12,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from dashboard.server import private_bind_host
+from dashboard.export_static import export_snapshot
 from dashboard.service import Dashboard, ReadLedger, STRATEGY_DETAILS, ev_strategy_rows, signal, threshold_strategy_rows
 from tracking import Ledger, Policy, utc
 
@@ -36,6 +37,28 @@ class DashboardTests(unittest.TestCase):
         for value in ['0.0.0.0', '8.8.8.8', 'localhost']:
             with self.subTest(value=value), self.assertRaises(Exception):
                 private_bind_host(value)
+
+    def test_static_export_uses_snapshot_adapter_and_excludes_runtime_files(self):
+        class FakeService:
+            def overview(self, book, now=None):
+                return {'as_of': now, 'teams': {'BOS': {}, 'NYK': {}},
+                        'games': [{'id': 'g1', 'tipoff': now}],
+                        'policies': [{'id': 'p1'}], 'system': {}}
+            def game(self, game_id, book, now=None): return {'id': game_id, 'book': book}
+            def elo(self, teams): return {'series': [{'team': team, 'points': []} for team in teams]}
+            def team(self, team): return {'team': team, 'points': [], 'recent': []}
+            def performance(self, policy_id=None, now=None): return {'policy_id': policy_id or 'p0'}
+            def research(self): return []
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / 'site'
+            summary = export_snapshot(output, FakeService())
+            self.assertEqual(summary['games'], 1)
+            self.assertIn('COURTSIDE_STATIC = true', (output / 'deployment.js').read_text())
+            games = json.loads((output / 'data/games/draftkings.json').read_text())
+            self.assertEqual(games['g1']['book'], 'draftkings')
+            self.assertFalse((output / '.env').exists())
+            hosted = json.loads((output / 'data/overview/draftkings.json').read_text())
+            self.assertIn('published snapshot', hosted['system']['hosting'].lower())
 
     def test_fresh_value_qualifies(self):
         s = signal(self.game,self.forecast,self.quote,{'status':'eligible'},self.policy,self.now)

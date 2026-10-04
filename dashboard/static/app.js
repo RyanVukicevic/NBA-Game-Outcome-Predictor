@@ -23,7 +23,34 @@ const notice = (text, warning=false) => `<div class="notice ${warning?'warning':
 const stat = (label,value,detail,glyph) => `<div class="stat"><div class="stat-label">${glyph?icon(glyph):''}${esc(label)}</div><strong>${esc(value)}</strong><small>${esc(detail)}</small></div>`;
 function heading(title,sub,side=''){return `<div class="page-heading"><div><div class="eyebrow">NBA / ${esc(state.view.toUpperCase())}</div><h1>${esc(title)}</h1><p class="subtitle">${esc(sub)}</p></div>${side}</div>`;}
 function defs(items){return `<dl class="definition-list">${items.map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v??'--')}</dd></div>`).join('')}</dl>`;}
-async function api(path){const r=await fetch(`/api/${path}`,{cache:'no-store'});if(!r.ok)throw new Error(`Unable to load saved data (${r.status}).`);return r.json();}
+const staticCache = new Map();
+async function staticJson(path){
+  if(!staticCache.has(path))staticCache.set(path,fetch(path,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(`Unable to load published data (${r.status}).`);return r.json();}));
+  return staticCache.get(path);
+}
+async function staticApi(path){
+  const u=new URL(path,'https://courtside.invalid/'),name=u.pathname.replace(/^\//,'');
+  if(name==='overview')return staticJson(`/data/overview/${encodeURIComponent(u.searchParams.get('bookmaker')||'draftkings')}.json`);
+  if(name==='game'){
+    const games=await staticJson(`/data/games/${encodeURIComponent(u.searchParams.get('bookmaker')||'draftkings')}.json`);
+    const game=games[u.searchParams.get('id')||''];
+    if(!game)throw new Error('Published matchup is unavailable.');
+    return game;
+  }
+  if(name==='team')return staticJson(`/data/team/${encodeURIComponent(u.searchParams.get('id')||'')}.json`);
+  if(name==='performance')return staticJson(`/data/performance/${encodeURIComponent(u.searchParams.get('policy')||'default')}.json`);
+  if(name==='research')return staticJson('/data/research.json');
+  if(name==='elo'){
+    const wanted=new Set((u.searchParams.get('teams')||'').split(',').filter(Boolean));
+    const all=await staticJson('/data/elo.json');
+    return {series:all.series.filter(s=>wanted.has(s.team))};
+  }
+  throw new Error('Published endpoint is unavailable.');
+}
+async function api(path){
+  if(window.COURTSIDE_STATIC)return staticApi(path);
+  const r=await fetch(`/api/${path}`,{cache:'no-store'});if(!r.ok)throw new Error(`Unable to load saved data (${r.status}).`);return r.json();
+}
 function toast(text){$('#toast').textContent=text;$('#toast').style.display='block';setTimeout(()=>$('#toast').style.display='none',4000);}
 function applyTheme(){document.documentElement.dataset.theme=state.theme;const button=$('#theme-toggle');if(button){button.innerHTML=icon(state.theme==='dark'?'sun':'moon');button.title=state.theme==='dark'?'Use light mode':'Use dark mode';button.setAttribute('aria-label',button.title);}icons();}
 function activate(){ $$('nav a').forEach(a=>{a.classList.toggle('active',a.dataset.view===state.view);if(a.dataset.view===state.view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}); $('#crumb').textContent=names[state.view]; }

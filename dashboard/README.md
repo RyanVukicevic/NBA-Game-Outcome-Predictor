@@ -119,6 +119,34 @@ migrate the ledger, add a real scheduled worker and heartbeat, secure deployment
 backups and monitoring. Free hosting must be checked against those requirements;
 static frontend hosting alone cannot run the Python collector.
 
+## Static Hosted Snapshot
+
+The full interface can be exported for free HTTPS hosting without publishing the
+raw SQLite ledger, model artifact, environment file, or provider credentials:
+
+```powershell
+.venv\Scripts\python.exe -B -m dashboard.export_static
+```
+
+This writes the next 90 days and supporting read-only views to the ignored
+`dashboard/public/` directory. Local mode continues to use the Python API; the
+exported copy uses bounded JSON files and identifies itself as a published
+snapshot in System. Deploy `dashboard/public` to Cloudflare Pages. Pages provides
+a free `*.pages.dev` URL; a purchased domain can later point `www` at that site.
+
+The export is a publication step, not a collector. It shows data as of its
+generation timestamp. A hosted worker/database migration is still required for
+automatic forecasts and odds collection while this computer is off.
+
+For the initial Cloudflare dashboard deployment, upload
+`dashboard/courtside-cloudflare.zip` using **Workers & Pages > Create application
+> Get started > Drag and drop your files** and name the project `courtside-nba`.
+Cloudflare will issue `https://courtside-nba.pages.dev` when that name is
+available. Regenerate and upload a new production deployment to refresh the
+snapshot. Direct Upload projects cannot later switch to Git integration, so the
+eventual automated database/worker deployment should be created as a separate
+project and promoted only after it passes the same checks.
+
 ## Assets And Verification
 
 NBA team logos are local PNGs sourced from ESPN's public image CDN. Team marks
