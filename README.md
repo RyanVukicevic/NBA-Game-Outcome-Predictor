@@ -1,8 +1,34 @@
-# NBA Game Predictor
+# Courtside: NBA Game Predictor
 
-Starter project for building an NBA game predictor with [`nba_api`](https://github.com/swar/nba_api).
+Courtside is a reproducible NBA moneyline forecasting and prospective betting-
+research product. It combines a calibrated logistic model, pregame Elo and team
+form, immutable forecast/odds evidence, paper-strategy evaluation, and a mobile-
+friendly dashboard without executing wagers.
 
-The current predictor uses team game logs, builds rolling pre-game team features, trains a logistic regression model, and predicts the home team's win probability for a matchup.
+**Live dashboard:** [courtside-nba.pages.dev](https://courtside-nba.pages.dev)
+
+## Highlights
+
+- Forward-only evaluation and full-history deployment are kept separate.
+- Every forecast, market quote, eligibility change, cutoff decision, and result
+  is timestamped in an append-only SQLite ledger.
+- A quota-aware scheduler preregisters DraftKings T-60 and T-6h paper cohorts.
+- The read-only PWA explains model probabilities, EV, Elo, calibration, strategy
+  outcomes, data freshness, and operational health on desktop or mobile.
+- Controlled tree, neural, feature, rating, and calibration studies remain
+  isolated from the production logistic model unless evidence supports promotion.
+
+See [methodology](docs/METHODOLOGY.md), [architecture](docs/ARCHITECTURE.md),
+[data dictionary](docs/DATA_DICTIONARY.md), and [deployment](docs/DEPLOYMENT.md).
+
+## Local Dashboard
+
+Run `.venv\Scripts\python.exe -B -m dashboard.server --port 8765` and open
+http://127.0.0.1:8765. The read-only dashboard includes matchup cards, production
+Elo rankings, feature explanations, forecast/odds history, prospective paper
+performance and quota status. It does not retrain, collect odds, or place bets.
+See [the dashboard guide](dashboard/README.md) for startup, decision-color rules,
+tests, static publication, and the autonomous hosting design.
 
 ## Pregame Tracking And Paper Benchmarks
 

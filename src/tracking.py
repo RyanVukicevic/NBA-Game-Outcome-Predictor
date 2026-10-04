@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import Path
 import sqlite3
+import uuid
 
 import numpy as np
 import pandas as pd
@@ -78,7 +79,7 @@ class Ledger:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3):
+        if version not in (0, 1, 2, 3, 4):
             raise ValueError(f"Unsupported tracking schema {version}")
         self.db.executescript("""
         CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, home TEXT NOT NULL, away TEXT NOT NULL);
@@ -138,7 +139,17 @@ class Ledger:
             tipoff TEXT NOT NULL, horizon INTEGER NOT NULL, observed TEXT NOT NULL,
             status TEXT NOT NULL, reason TEXT);
         CREATE TABLE IF NOT EXISTS scheduler_leases(name TEXT PRIMARY KEY, owner TEXT NOT NULL, expires TEXT NOT NULL);
-        PRAGMA user_version=3;
+        CREATE TABLE IF NOT EXISTS worker_runs(
+            id TEXT PRIMARY KEY, started TEXT NOT NULL, finished TEXT, status TEXT NOT NULL,
+            message TEXT, published TEXT, next_wake TEXT, version TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS worker_runs_started ON worker_runs(started DESC);
+        CREATE TABLE IF NOT EXISTS notification_deliveries(
+            id TEXT PRIMARY KEY, event_key TEXT NOT NULL, channel TEXT NOT NULL,
+            recipient_hash TEXT NOT NULL, created TEXT NOT NULL, sent TEXT,
+            status TEXT NOT NULL, provider_id TEXT, error TEXT,
+            UNIQUE(event_key, channel, recipient_hash));
+        CREATE INDEX IF NOT EXISTS notification_status ON notification_deliveries(status, created);
+        PRAGMA user_version=4;
         """)
 
     def __enter__(self):
@@ -149,6 +160,59 @@ class Ledger:
 
     def rows(self, sql, params=()):
         return [dict(r) for r in self.db.execute(sql, params)]
+
+    def start_worker_run(self, version, started=None):
+        """Open one auditable hosted-worker run and return its opaque ID."""
+        run_id = uuid.uuid4().hex
+        with self.db:
+            self.db.execute("""INSERT INTO worker_runs(id,started,status,version)
+                VALUES(?,?,'running',?)""", (run_id, utc(started), str(version)))
+        return run_id
+
+    def finish_worker_run(self, run_id, status, message=None, published=None,
+                          next_wake=None, finished=None):
+        if status not in ("success", "degraded", "failed", "skipped"):
+            raise ValueError("Unsupported worker-run status.")
+        with self.db:
+            changed = self.db.execute("""UPDATE worker_runs SET finished=?,status=?,message=?,published=?,next_wake=?
+                WHERE id=? AND status='running'""",
+                (utc(finished), status, message, utc(published) if published else None,
+                 utc(next_wake) if next_wake else None, run_id)).rowcount
+        if changed != 1:
+            raise ValueError("Worker run is missing or already finished.")
+
+    def mark_worker_published(self, run_id, published=None):
+        with self.db:
+            changed = self.db.execute("UPDATE worker_runs SET published=? WHERE id=?",
+                                      (utc(published), run_id)).rowcount
+        if changed != 1:
+            raise ValueError("Worker run is missing.")
+
+    def degrade_worker_run(self, run_id, message):
+        with self.db:
+            changed = self.db.execute("""UPDATE worker_runs SET status='degraded',message=?
+                WHERE id=? AND status='success'""", (str(message), run_id)).rowcount
+        if changed != 1:
+            raise ValueError("Only a successful worker run can be marked degraded.")
+
+    def reserve_notification(self, event_key, channel, recipient_hash, created=None):
+        """Reserve an idempotent delivery without storing an email address."""
+        delivery_id = digest(["notification-v1", event_key, channel, recipient_hash])
+        with self.db:
+            inserted = self.db.execute("""INSERT OR IGNORE INTO notification_deliveries
+                (id,event_key,channel,recipient_hash,created,status) VALUES(?,?,?,?,?,'pending')""",
+                (delivery_id, event_key, channel, recipient_hash, utc(created))).rowcount
+        return delivery_id if inserted else None
+
+    def finish_notification(self, delivery_id, status, provider_id=None, error=None, sent=None):
+        if status not in ("sent", "failed", "suppressed"):
+            raise ValueError("Unsupported notification status.")
+        with self.db:
+            changed = self.db.execute("""UPDATE notification_deliveries
+                SET sent=?,status=?,provider_id=?,error=? WHERE id=? AND status='pending'""",
+                (utc(sent), status, provider_id, error, delivery_id)).rowcount
+        if changed != 1:
+            raise ValueError("Notification is missing or already finalized.")
 
     @staticmethod
     def _eligibility_signature(state):

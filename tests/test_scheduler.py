@@ -222,8 +222,24 @@ class SchedulerTests(unittest.TestCase):
         self.l.db.execute("PRAGMA user_version=1")
         self.l.db.commit()
         with Ledger(self.path) as other:
-            self.assertEqual(other.db.execute("PRAGMA user_version").fetchone()[0],3)
+            self.assertEqual(other.db.execute("PRAGMA user_version").fetchone()[0],4)
             self.assertEqual(len(other.rows("SELECT * FROM forecasts")),1)
+
+    def test_worker_runs_and_notifications_are_idempotent_and_auditable(self):
+        run_id = self.l.start_worker_run("test-build", DUE)
+        self.l.finish_worker_run(run_id, "success", "published", published=CUTOFF,
+                                 next_wake=START, finished=CUTOFF)
+        run = self.l.rows("SELECT * FROM worker_runs WHERE id=?", (run_id,))[0]
+        self.assertEqual(run["status"], "success")
+        self.assertEqual(run["published"], utc(CUTOFF))
+        recipient = "anonymous-recipient-hash"
+        delivery = self.l.reserve_notification("decision:next", "email", recipient, DUE)
+        self.assertIsNotNone(delivery)
+        self.assertIsNone(self.l.reserve_notification("decision:next", "email", recipient, DUE))
+        self.l.finish_notification(delivery, "sent", "provider-1", sent=CUTOFF)
+        saved = self.l.rows("SELECT * FROM notification_deliveries")[0]
+        self.assertEqual(saved["status"], "sent")
+        self.assertEqual(saved["provider_id"], "provider-1")
 
     def test_full_schedule_import_retains_prior_final_blocker(self):
         frame=pd.DataFrame([dict(GAME_ID="0022600001",HOME_TEAM="NYK",AWAY_TEAM="PHI",

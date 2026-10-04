@@ -60,11 +60,13 @@ class DashboardTests(unittest.TestCase):
             self.assertTrue((output / 'icon-512.png').exists())
             self.assertTrue((output / 'apple-touch-icon.png').exists())
             self.assertTrue((output / 'site.webmanifest').exists())
+            self.assertTrue((output / 'service-worker.js').exists())
             games = json.loads((output / 'data/games/draftkings.json').read_text())
             self.assertEqual(games['g1']['book'], 'draftkings')
             self.assertFalse((output / '.env').exists())
             hosted = json.loads((output / 'data/overview/draftkings.json').read_text())
             self.assertIn('published snapshot', hosted['system']['hosting'].lower())
+            self.assertEqual(hosted['system']['published_at'], summary['generated_at'])
             archive = build_archive(output, Path(directory) / 'site.zip')
             with zipfile.ZipFile(archive) as bundle:
                 names = bundle.namelist()
@@ -162,6 +164,21 @@ class DashboardTests(unittest.TestCase):
         self.assertFalse(overview['system']['ledger_available'])
         self.assertFalse(self.path.exists())
         self.assertEqual(overview['games'],[])
+
+    def test_overview_reports_hosted_worker_and_notification_health(self):
+        self.seed()
+        with Ledger(self.path) as ledger:
+            run_id = ledger.start_worker_run('build-1', self.now)
+            ledger.finish_worker_run(run_id, 'success', published=self.now,
+                                     next_wake=self.tip, finished=self.now)
+            delivery = ledger.reserve_notification('decision:g1', 'email', 'recipient-hash', self.now)
+            ledger.finish_notification(delivery, 'sent', 'message-1', sent=self.now)
+        service=Dashboard(self.path,Path(self.temp.name)/'absent.joblib')
+        with patch.object(service,'model_info',return_value={'available':True,'compatible':True,'model_id':'model'}):
+            overview=service.overview(now=self.now)
+        self.assertEqual(overview['system']['latest_worker']['status'],'success')
+        self.assertEqual(overview['system']['notifications'][0]['status'],'sent')
+        self.assertIn('success',overview['system']['scheduler'])
 
     def test_settled_performance_uses_frozen_decisions(self):
         self.seed()

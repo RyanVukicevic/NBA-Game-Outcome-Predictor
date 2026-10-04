@@ -267,8 +267,18 @@ class Dashboard:
             counts = {table: ledger.rows(f'SELECT COUNT(*) AS n FROM {table}')[0]['n'] for table in ('forecasts', 'odds', 'decisions', 'results')}
             slots = ledger.rows('SELECT game_id,observed,status,reason FROM scheduler_slots ORDER BY observed DESC LIMIT 15')
             requests = ledger.rows('SELECT started,finished,cost,status,purpose FROM api_requests ORDER BY id DESC LIMIT 10')
+            tables = {row['name'] for row in ledger.rows("SELECT name FROM sqlite_master WHERE type='table'")}
+            workers = (ledger.rows('''SELECT id,started,finished,status,message,published,next_wake,version
+                FROM worker_runs ORDER BY started DESC LIMIT 10''') if 'worker_runs' in tables else [])
+            deliveries = (ledger.rows('''SELECT status,COUNT(*) AS count,MAX(COALESCE(sent,created)) AS latest
+                FROM notification_deliveries GROUP BY status ORDER BY status''')
+                if 'notification_deliveries' in tables else [])
+            latest_worker = workers[0] if workers else None
+            scheduler = (f"Hosted worker: {latest_worker['status']}" if latest_worker
+                         else 'Recorded activity; no worker heartbeat' if slots else 'No recorded activity')
             base['system'].update(ledger_available=True, counts=counts, budget=budget_status(ledger, now),
-                slots=slots, requests=requests, scheduler='Recorded activity; not a heartbeat' if slots else 'No recorded activity',
+                slots=slots, requests=requests, workers=workers, latest_worker=latest_worker,
+                notifications=deliveries, scheduler=scheduler,
                 latest_forecast=ledger.rows('SELECT MAX(received) AS stamp FROM forecasts')[0]['stamp'],
                 latest_odds=ledger.rows('SELECT MAX(received) AS stamp FROM odds')[0]['stamp'])
         return clean(base)

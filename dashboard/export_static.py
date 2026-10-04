@@ -43,9 +43,13 @@ def export_snapshot(output: Path = DEFAULT_OUTPUT, service=None, days: int = 90)
     (output / "_headers").write_text(
         "/*\n"
         "  X-Content-Type-Options: nosniff\n"
+        "  X-Frame-Options: DENY\n"
         "  Referrer-Policy: no-referrer\n"
         "  Permissions-Policy: camera=(), microphone=(), geolocation=()\n"
+        "  Cross-Origin-Opener-Policy: same-origin\n"
         "  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'\n"
+        "/service-worker.js\n"
+        "  Cache-Control: no-cache\n"
         "/data/*\n"
         "  Cache-Control: no-cache\n",
         encoding="ascii",
@@ -61,7 +65,7 @@ def export_snapshot(output: Path = DEFAULT_OUTPUT, service=None, days: int = 90)
         overview["games"] = [game for game in overview["games"] if pd.Timestamp(game["tipoff"]) <= cutoff]
         overview["as_of"] = generated
         overview["system"]["hosting"] = "Cloudflare Pages / published snapshot"
-        overview["system"]["scheduler"] = f"Snapshot generated {generated}; collection runs separately"
+        overview["system"]["published_at"] = generated
         overviews[book] = overview
         game_ids.update(game["id"] for game in overview["games"])
         write_json(output / "data" / "overview" / f"{book}.json", overview)

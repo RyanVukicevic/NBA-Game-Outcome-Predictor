@@ -11,6 +11,15 @@ from pathlib import Path
 import pandas as pd
 
 SCHEMA_VERSION = 2
+MODEL_SOURCE_FILES = (
+    "config.py",
+    "data.py",
+    "elo.py",
+    "features.py",
+    "modeling.py",
+    "prediction.py",
+    "production.py",
+)
 
 
 def cutoff_timestamp(value=None) -> pd.Timestamp:
@@ -34,9 +43,13 @@ def frame_digest(frame: pd.DataFrame) -> str:
 
 
 def implementation_id() -> str:
+    """Identify probability-producing code, not collectors or presentation code."""
     root = Path(__file__).resolve().parent
-    return digest({p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                   for p in sorted(root.glob("*.py"))})
+    return digest({
+        "contract": "model-source-v2",
+        "files": {name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+                  for name in MODEL_SOURCE_FILES},
+    })
 
 
 def runtime_versions() -> dict[str, str]:

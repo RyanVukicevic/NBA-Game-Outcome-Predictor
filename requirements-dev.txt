@@ -1,4 +1,6 @@
 -r requirements.txt
+-r experiments/requirements.txt
+-r hosted/requirements.txt
 ipykernel>=6.29
 nbconvert>=7.16
 nbformat>=5.10
