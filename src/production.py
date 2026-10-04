@@ -263,6 +263,7 @@ def normalize_schedule_frame(frame: pd.DataFrame) -> pd.DataFrame:
         "GAME_SUBTYPE": ["gameSubtype"],
         "GAME_LABEL": ["gameLabel"],
         "SERIES_TEXT": ["seriesText"],
+        "IS_NEUTRAL": ["isNeutral", "IS_NEUTRAL"],
     }
     renamed: dict[str, str] = {}
     for target, candidates in rename_candidates.items():
@@ -339,6 +340,8 @@ def upcoming_games(config: ProductionConfig, today: date | None = None, ledger=N
                               "004": "Playoffs", "005": "Play-In"})
         is_playoffs = is_playoffs.where(phase.isna(), phase.eq("Playoffs"))
     supported = schedule["HOME_TEAM"].isin(team_id_to_abbreviation().values()) & schedule["AWAY_TEAM"].isin(team_id_to_abbreviation().values())
+    if "IS_NEUTRAL" in schedule:
+        supported &= ~schedule["IS_NEUTRAL"].astype(str).str.lower().isin(["true", "1"])
     supported &= ~labels.str.contains("preseason|all.star", case=False, regex=True)
     supported &= phase.isna() | phase.isin(config.season_types)
     if "STATUS" in schedule:

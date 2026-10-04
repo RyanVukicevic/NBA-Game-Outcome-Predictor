@@ -69,7 +69,8 @@ def add_elo_features(
         away_elo = ratings.get(away, initial_elo)
         home_history = rating_history.setdefault(home, [home_elo])
         away_history = rating_history.setdefault(away, [away_elo])
-        expected_home = expected_score(home_elo + home_advantage, away_elo)
+        venue_bonus = 0 if row.get("IS_NEUTRAL", False) else home_advantage
+        expected_home = expected_score(home_elo + venue_bonus, away_elo)
         home_win = float(row["HOME_WIN"])
 
         updated = row.to_dict()

@@ -161,6 +161,8 @@ def load_or_build_model_frames(
                 carryover=elo_carryover,
             )
         # Elo sees the complete game sequence before rolling warmup rows are removed.
+        # Neutral games inform history/Elo but not the home-court classifier's targets.
+        matchup_frame = matchup_frame.loc[~matchup_frame["IS_NEUTRAL"]].copy()
         rolling_columns = [c for c in matchup_frame if c.startswith(("home_rolling_", "away_rolling_"))]
         matchup_frame = matchup_frame.dropna(subset=rolling_columns).reset_index(drop=True)
         joblib.dump((team_games, matchup_frame, latest_elos), cache_path)

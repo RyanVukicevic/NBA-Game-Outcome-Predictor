@@ -14,6 +14,12 @@ from production import load_production_config, run_production_predictions, upcom
 
 
 class ScheduleTests(unittest.TestCase):
+    def test_neutral_upcoming_games_are_not_home_court_predictions(self):
+        rows = pd.DataFrame([dict(GAME_DATE=date(2026, 10, 20), HOME_TEAM='BOS',
+                                  AWAY_TEAM='NYK', IS_NEUTRAL=True)])
+        with patch('production.fetch_schedule_games', return_value=rows):
+            self.assertEqual(upcoming_games(load_production_config(), today=date(2026, 10, 20)), [])
+
     def test_cross_season_window_filters_and_deduplicates(self):
         config = replace(load_production_config(), upcoming_days=90)
         rows = pd.DataFrame([
@@ -60,7 +66,7 @@ class ScheduleTests(unittest.TestCase):
         output = io.StringIO()
         with patch("production.date") as today, patch("production.upcoming_games", return_value=[]), patch("production.load_or_train_production_model") as model:
             today.today.return_value = date(2026, 9, 9)
-            with contextlib.redirect_stdout(output):
+            with contextlib.redirect_stdout(output), patch('tracking.Ledger'):
                 rows = run_production_predictions()
         self.assertTrue(rows.empty)
         model.assert_not_called()

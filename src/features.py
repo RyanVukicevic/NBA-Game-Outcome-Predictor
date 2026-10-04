@@ -38,7 +38,8 @@ def add_team_features(
         df["SEASON_YEAR"] = df["SEASON_ID"].astype(str).str[-4:]
     else:
         df["SEASON_YEAR"] = ""
-    df["IS_HOME"] = df["MATCHUP"].str.contains(" vs. ", regex=False).astype(int)
+    if "IS_HOME" not in df:
+        df["IS_HOME"] = df["MATCHUP"].str.contains(" vs. ", regex=False).astype(int)
     if "SEASON_TYPE" in df.columns:
         df["IS_PLAYOFFS"] = (df["SEASON_TYPE"] == "Playoffs").astype(int)
     else:
@@ -139,6 +140,7 @@ def build_matchup_frame(team_games: pd.DataFrame, rolling_window: int, require_f
             "AWAY_TEAM": away_row["TEAM_ABBREVIATION"],
             "HOME_WIN": int(home_row["WIN"]),
             "IS_PLAYOFFS": int(home_row.get("IS_PLAYOFFS", 0)),
+            "IS_NEUTRAL": bool(home_row.get("IS_NEUTRAL", False)),
             "HOME_REST_DAYS": float(home_row["REST_DAYS"]),
             "AWAY_REST_DAYS": float(away_row["REST_DAYS"]),
         }

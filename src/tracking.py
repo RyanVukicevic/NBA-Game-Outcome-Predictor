@@ -394,7 +394,8 @@ class Ledger:
         for game_id, group in logs.groupby("GAME_ID"):
             if game_id not in known:
                 continue
-            home = group[group["MATCHUP"].str.contains(" vs. ", regex=False)].iloc[0]
+            home_mask = group["IS_HOME"].eq(1) if "IS_HOME" in group else group["MATCHUP"].str.contains(" vs. ", regex=False)
+            home = group[home_mask].iloc[0]
             away = group[group["TEAM_ID"] != home["TEAM_ID"]].iloc[0]
             if (home["TEAM_ABBREVIATION"], away["TEAM_ABBREVIATION"]) != (known[game_id]["home"], known[game_id]["away"]):
                 raise ValueError("Result team mismatch.")
