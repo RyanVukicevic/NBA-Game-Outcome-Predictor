@@ -8,7 +8,12 @@ and verify each dashboard before relying on a $0 monthly total.
 
 ## 1. Local Prerequisites
 
-- Install the Google Cloud CLI and authenticate with `gcloud auth login`.
+- Install the Google Cloud CLI and authenticate. On Windows, use the `.cmd`
+  launcher so a restrictive PowerShell execution policy does not block setup:
+
+```powershell
+& "$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd" auth login
+```
 - In Cloudflare, create an R2 bucket named `courtside-state`.
 - Create an R2 API token restricted to object read/write for that bucket.
 - Create a Cloudflare API token with Pages edit access for `courtside-nba`.
