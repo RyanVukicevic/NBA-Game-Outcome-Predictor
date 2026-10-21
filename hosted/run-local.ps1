@@ -4,7 +4,7 @@ Set-Location -LiteralPath $ProjectRoot
 $env:ODDS_API_KEY = [Environment]::GetEnvironmentVariable('ODDS_API_KEY', 'User')
 $CredentialPath = Join-Path $env:LOCALAPPDATA 'Courtside\odds-api-key.dpapi'
 if (-not $env:ODDS_API_KEY -and (Test-Path -LiteralPath $CredentialPath)) {
-    $SecureKey = Get-Content -LiteralPath $CredentialPath -Raw | ConvertTo-SecureString
+    $SecureKey = (Get-Content -LiteralPath $CredentialPath -Raw).Trim() | ConvertTo-SecureString
     $Credential = New-Object System.Management.Automation.PSCredential('odds-api', $SecureKey)
     $env:ODDS_API_KEY = $Credential.GetNetworkCredential().Password
 }
