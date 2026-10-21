@@ -4,6 +4,9 @@
 
 ### Added
 
+- Windows local worker and dashboard launchers, encrypted Odds API key setup,
+  and explicit degraded health when odds collection is unconfigured.
+
 - Courtside responsive dashboard, dark default, card/table matchup views, Elo
   comparisons, forecast explanations, prospective performance, and system health.
 - Cloudflare Pages static export, PWA manifest/icons, offline shell, and shareable

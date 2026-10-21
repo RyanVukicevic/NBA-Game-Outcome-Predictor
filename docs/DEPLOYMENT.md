@@ -8,6 +8,32 @@ and verify each dashboard before relying on a $0 monthly total.
 
 ## 1. Local Prerequisites
 
+### Local Recovery While Cloud Setup Is Pending
+
+On October 20, 2026, this PC was configured with two Windows Task Scheduler
+entries: `Courtside Predictions` runs `hosted/run-local.ps1` every minute, and
+`Courtside Dashboard` starts `hosted/run-dashboard.ps1` at login. Both require
+the PC to be awake and the Windows user logged in. The local dashboard is at
+`http://127.0.0.1:8765`; these tasks do not publish changes to Cloudflare Pages.
+
+Configure the Odds API key in a hidden prompt:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\hosted\configure-local-odds.ps1
+```
+
+The key is encrypted with Windows DPAPI in
+`%LOCALAPPDATA%\Courtside\odds-api-key.dpapi`, bound to the current Windows
+account. It is loaded only into the scheduled process. No key goes into Git or
+the public site. Until a key is configured, the worker records a degraded
+heartbeat and refreshes NBA forecasts without requesting odds or creating paper
+decisions. Existing user-level `ODDS_API_KEY` is also supported. Dashboard logs
+are written to `%LOCALAPPDATA%\Courtside\dashboard.log`.
+
+These local tasks are a fallback. Finish the cloud setup below for operation
+while the PC is off. Disable `Courtside Predictions` when activating a cloud
+collector so two independent ledgers do not share one API allowance.
+
 - Install the Google Cloud CLI and authenticate. On Windows, use the `.cmd`
   launcher so a restrictive PowerShell execution policy does not block setup:
 
