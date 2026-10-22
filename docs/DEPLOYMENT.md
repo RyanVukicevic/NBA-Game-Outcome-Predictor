@@ -16,6 +16,24 @@ entries: `Courtside Predictions` runs `hosted/run-local.ps1` every minute, and
 the PC to be awake and the Windows user logged in. The local dashboard is at
 `http://127.0.0.1:8765`; these tasks do not publish changes to Cloudflare Pages.
 
+As of October 22, the tasks launch `.venv\Scripts\pythonw.exe` with
+`-B -m hosted.windows_background worker` or `dashboard`, avoiding console
+windows entirely. This launcher decrypts the same Windows-bound key directly
+and supplies log streams so HTTP responses work without a terminal. The earlier
+PowerShell scripts remain available for manual use.
+
+Double-click **Open Courtside** on the desktop to open the local site. The
+shortcut starts the dashboard task if its port is closed. To start it manually:
+
+```powershell
+Start-ScheduledTask -TaskName 'Courtside Dashboard'
+```
+
+The windowless launcher writes `background-worker.log`,
+`background-dashboard.log`, and `background-open.log` under
+`%LOCALAPPDATA%\Courtside`, rotating each at 2 MB. Closing a browser tab does
+not stop collection. The worker and dashboard are independent tasks.
+
 Configure the Odds API key in a hidden prompt:
 
 ```powershell

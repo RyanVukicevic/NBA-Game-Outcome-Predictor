@@ -4,6 +4,9 @@
 
 ### Added
 
+- Console-free Windows task entry points with encrypted-key loading, logs, and
+  an auto-starting desktop dashboard shortcut.
+
 - Windows local worker and dashboard launchers, encrypted Odds API key setup,
   and explicit degraded health when odds collection is unconfigured.
 
