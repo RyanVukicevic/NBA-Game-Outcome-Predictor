@@ -4,6 +4,9 @@
 
 ### Added
 
+- Google Cloud Storage state with service-account authentication, collector
+  leases, stale-write protection, and consistent migration snapshot preparation.
+
 - Console-free Windows task entry points with encrypted-key loading, logs, and
   an auto-starting desktop dashboard shortcut.
 

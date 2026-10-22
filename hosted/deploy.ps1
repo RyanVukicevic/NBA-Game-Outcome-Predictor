@@ -1,7 +1,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$ProjectId,
     [string]$Region = "us-east1",
-    [Parameter(Mandatory = $true)][string]$CloudflareAccountId,
+    [string]$CloudflareAccountId,
+    [string]$GcsBucket,
+    [switch]$NoPublish,
     [string]$R2Bucket = "courtside-state",
     [string]$PagesProject = "courtside-nba"
 )
@@ -20,6 +22,7 @@ $Secrets = @(
 )
 
 $GcloudCommand = Get-Command gcloud.cmd -ErrorAction SilentlyContinue
+if (-not $GcloudCommand) { $GcloudCommand = Get-Command gcloud -ErrorAction SilentlyContinue }
 $Gcloud = if ($GcloudCommand) {
     $GcloudCommand.Source
 } else {
@@ -44,6 +47,13 @@ if ($LASTEXITCODE -ne 0 -or -not $ActiveAccount) {
 Invoke-RequiredGcloud config set project $ProjectId --quiet
 Invoke-RequiredGcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com --quiet
 
+if ($GcsBucket) {
+    $Secrets = @('courtside-odds-api-key')
+    if (-not $NoPublish) { $Secrets += 'courtside-cf-api-token' }
+} elseif (-not $CloudflareAccountId) {
+    throw 'Supply GcsBucket or CloudflareAccountId for private state storage.'
+}
+
 & $Gcloud artifacts repositories describe $Repository --location $Region 2>$null
 if ($LASTEXITCODE -ne 0) {
     Invoke-RequiredGcloud artifacts repositories create $Repository --repository-format docker --location $Region --quiet
@@ -62,11 +72,27 @@ foreach ($secret in $Secrets) {
     Invoke-RequiredGcloud secrets add-iam-policy-binding $secret --member "serviceAccount:$RuntimeAccount" --role roles/secretmanager.secretAccessor --quiet
 }
 
+$Environment = "COURTSIDE_URL=https://$PagesProject.pages.dev"
+$SecretBindings = 'ODDS_API_KEY=courtside-odds-api-key:latest'
+if ($GcsBucket) {
+    Invoke-RequiredGcloud storage buckets add-iam-policy-binding "gs://$GcsBucket" --member "serviceAccount:$RuntimeAccount" --role roles/storage.objectAdmin --quiet
+    $Environment += ",GCS_BUCKET=$GcsBucket"
+} else {
+    $Environment += ",R2_ACCOUNT_ID=$CloudflareAccountId,R2_BUCKET=$R2Bucket"
+    $SecretBindings += ',R2_ACCESS_KEY_ID=courtside-r2-access-key-id:latest,R2_SECRET_ACCESS_KEY=courtside-r2-secret-access-key:latest'
+}
+if ($NoPublish) {
+    $Environment += ',PUBLISH_PAGES=false'
+} else {
+    if (-not $CloudflareAccountId) { throw 'CloudflareAccountId is required for publication.' }
+    $Environment += ",CLOUDFLARE_ACCOUNT_ID=$CloudflareAccountId,CLOUDFLARE_PAGES_PROJECT=$PagesProject"
+    $SecretBindings += ',CLOUDFLARE_API_TOKEN=courtside-cf-api-token:latest'
+}
+
 Invoke-RequiredGcloud builds submit --config hosted/cloudbuild.yaml --substitutions "_IMAGE=$Image" . --quiet
 Invoke-RequiredGcloud run deploy $Service --image $Image --region $Region --service-account $RuntimeAccount `
     --no-allow-unauthenticated --concurrency 1 --max-instances 1 --timeout 600 --memory 1Gi `
-    --set-env-vars "R2_ACCOUNT_ID=$CloudflareAccountId,R2_BUCKET=$R2Bucket,CLOUDFLARE_ACCOUNT_ID=$CloudflareAccountId,CLOUDFLARE_PAGES_PROJECT=$PagesProject,COURTSIDE_URL=https://$PagesProject.pages.dev" `
-    --set-secrets "ODDS_API_KEY=courtside-odds-api-key:latest,R2_ACCESS_KEY_ID=courtside-r2-access-key-id:latest,R2_SECRET_ACCESS_KEY=courtside-r2-secret-access-key:latest,CLOUDFLARE_API_TOKEN=courtside-cf-api-token:latest" --quiet
+    --set-env-vars $Environment --set-secrets $SecretBindings --quiet
 
 $Url = Invoke-RequiredGcloud run services describe $Service --region $Region --format "value(status.url)"
 Invoke-RequiredGcloud run services add-iam-policy-binding $Service --region $Region --member "serviceAccount:$SchedulerAccount" --role roles/run.invoker --quiet

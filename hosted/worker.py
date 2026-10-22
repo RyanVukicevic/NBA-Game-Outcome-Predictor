@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from contextlib import nullcontext
 
 import pandas as pd
 
@@ -68,6 +69,13 @@ class HostedWorker:
         self.work_dir = Path(work_dir)
 
     def run(self) -> dict:
+        lease = self.store.lease() if hasattr(self.store, 'lease') else nullcontext(True)
+        with lease as acquired:
+            if not acquired:
+                return {'status': 'busy'}
+            return self._run()
+
+    def _run(self) -> dict:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self.store.restore_runtime(self.root)
         db_path = self.work_dir / "predictions.sqlite3"
@@ -86,8 +94,9 @@ class HostedWorker:
                 run_id = ledger.start_worker_run(revision, now)
                 import joblib
                 model_id = joblib.load(model_path).metadata["model_id"]
+                force = any(item['status'] == 'due' for item in plan(ledger, model_id))
                 outcome = tick(ledger, model_id, refresh=lambda: refresh_tracking(
-                    ledger, model_path, config_path, expected_model_id=model_id))
+                    ledger, model_path, config_path, force=force, expected_model_id=model_id))
                 alerts = deliver_locked_alerts(ledger, self.notifier)
                 plans = plan(ledger, model_id)
                 wake = next_wake(plans)
@@ -96,7 +105,8 @@ class HostedWorker:
                 summary = json.dumps({"tick": outcome["status"], "requests": outcome["requests"],
                                       "decisions": outcome["decisions"], "alerts": alerts["sent"]},
                                      sort_keys=True, separators=(",", ":"))
-                ledger.finish_worker_run(run_id, "success", summary, next_wake=wake)
+                degraded = bool(outcome.get('error')) or not outcome.get('budget', {}).get('ready', False)
+                ledger.finish_worker_run(run_id, 'degraded' if degraded else 'success', summary, next_wake=wake)
 
             # Persist collection before attempting publication; a failed deploy cannot lose quota history.
             self.store.save_ledger(db_path)
@@ -108,7 +118,7 @@ class HostedWorker:
                 with Ledger(db_path) as ledger:
                     ledger.mark_worker_published(run_id, published)
                 self.store.save_ledger(db_path)
-            return {"status": "success", "run_id": run_id, "published": published,
+            return {"status": 'degraded' if degraded else 'success', "run_id": run_id, "published": published,
                     "publish_due": publish_due, "next_wake": wake, "outcome": outcome,
                     "alerts": alerts}
         except Exception as exc:

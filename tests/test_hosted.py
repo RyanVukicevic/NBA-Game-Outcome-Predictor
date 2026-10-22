@@ -9,6 +9,8 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -16,7 +18,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from hosted.notifications import deliver_locked_alerts, qualifying_decisions
 from hosted.state import StateStore, build_runtime_bundle
+from hosted.state import GoogleStateStore
 from hosted.worker import next_wake, should_publish
+from hosted.worker import HostedWorker
 from tracking import Ledger, Policy
 
 
@@ -40,6 +44,90 @@ class FakeNotifier:
 
 
 class HostedTests(unittest.TestCase):
+    def test_cloud_cycle_refreshes_due_inputs_and_persists_failed_collection_health(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'original.sqlite3'
+            with Ledger(source) as ledger:
+                ledger.game('preserved', 'BOS', 'NYK')
+            store = StateStore(MemoryS3(), 'bucket')
+            store.save_ledger(source)
+            due = [{'status': 'due', 'due': '2026-10-20T20:00:00Z'}]
+            def cycle(ledger, model_id, refresh):
+                refresh()
+                return dict(status='ok', requests=1, decisions=0, error='RuntimeError', budget={'ready': True})
+            with patch.object(store, 'restore_runtime'), \
+                 patch('hosted.worker.load_production_config'), \
+                 patch('hosted.worker.production_model_path', return_value=root/'model.joblib'), \
+                 patch('joblib.load', return_value=SimpleNamespace(metadata={'model_id': 'm'})), \
+                 patch('hosted.worker.plan', return_value=due), \
+                 patch('hosted.worker.tick', side_effect=cycle), \
+                 patch('hosted.worker.refresh_tracking') as refresh, \
+                 patch.dict('os.environ', {'PUBLISH_PAGES': 'false'}):
+                result = HostedWorker(store=store, root=root, work_dir=root/'work').run()
+            self.assertEqual(result['status'], 'degraded')
+            self.assertTrue(refresh.call_args.kwargs['force'])
+            restored = root/'restored.sqlite3'
+            store.restore_ledger(restored)
+            with Ledger(restored) as ledger:
+                self.assertEqual(ledger.rows('SELECT id FROM games')[0]['id'], 'preserved')
+                self.assertEqual(ledger.rows('SELECT status FROM worker_runs')[0]['status'], 'degraded')
+
+    def test_google_store_rejects_stale_overwrite(self):
+        from google.api_core.exceptions import PreconditionFailed
+        class Bucket:
+            def __init__(self): self.data = {}; self.next = 1
+            def blob(self, name): return Blob(self, name)
+        class Blob:
+            def __init__(self, bucket, name): self.bucket, self.name = bucket, name
+            def reload(self): self.generation = self.bucket.data[self.name][0]
+            def download_as_bytes(self, if_generation_match):
+                generation, data = self.bucket.data[self.name]
+                if generation != if_generation_match: raise PreconditionFailed('stale')
+                return data
+            def upload_from_string(self, data, if_generation_match, **kwargs):
+                generation = self.bucket.data.get(self.name, (0, None))[0]
+                if generation != if_generation_match: raise PreconditionFailed('stale')
+                self.generation = self.bucket.next
+                self.bucket.next += 1
+                self.bucket.data[self.name] = self.generation, data
+            def delete(self, if_generation_match):
+                if self.bucket.data[self.name][0] != if_generation_match: raise PreconditionFailed('stale')
+                del self.bucket.data[self.name]
+        bucket = Bucket()
+        first, second = GoogleStateStore(bucket), GoogleStateStore(bucket)
+        first.put('ledger', b'original', 'application/octet-stream')
+        self.assertEqual(second.get('ledger'), b'original')
+        first.put('ledger', b'new', 'application/octet-stream')
+        with self.assertRaises(PreconditionFailed):
+            second.put('ledger', b'stale', 'application/octet-stream')
+        with first.lease() as acquired:
+            self.assertTrue(acquired)
+            with second.lease() as other:
+                self.assertFalse(other)
+        with second.lease() as acquired:
+            self.assertTrue(acquired)
+
+    def test_sqlite_backup_includes_committed_wal_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, restored = Path(directory) / 'wal.sqlite3', Path(directory) / 'restored.sqlite3'
+            db = sqlite3.connect(source)
+            try:
+                db.execute('PRAGMA journal_mode=WAL')
+                db.execute('CREATE TABLE sample(value TEXT)')
+                db.execute("INSERT INTO sample VALUES('committed')")
+                db.commit()
+                store = StateStore(MemoryS3(), 'bucket')
+                store.save_ledger(source)
+                store.restore_ledger(restored)
+                check = sqlite3.connect(restored)
+                try:
+                    self.assertEqual(check.execute('SELECT value FROM sample').fetchone()[0], 'committed')
+                finally:
+                    check.close()
+            finally:
+                db.close()
+
     def test_ledger_round_trip_is_compressed_and_integrity_checked(self):
         with tempfile.TemporaryDirectory() as directory:
             source, restored = Path(directory) / "source.sqlite3", Path(directory) / "restored.sqlite3"

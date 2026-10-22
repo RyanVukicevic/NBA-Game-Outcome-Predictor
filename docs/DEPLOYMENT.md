@@ -1,5 +1,55 @@
 # Free-Tier Deployment Runbook
 
+## Google-Only Collector (Recommended)
+
+The collector can now keep private state in Google Cloud Storage using its
+service identity. Cloudflare credentials are optional for collection. The
+existing R2 path below remains supported. Google Cloud requires account sign-in
+and linked billing; free allowances are not a hard spending cap.
+
+1. Sign in with `gcloud.cmd auth login`, select/create the Courtside project,
+   link billing, and create a project-scoped monthly budget with email alerts.
+   Budget alerts do not automatically stop spending.
+2. Create a Standard Cloud Storage bucket in `us-east1`, with uniform bucket
+   access and public access prevention. Use the same region for Cloud Run.
+3. Create Secret Manager secret `courtside-odds-api-key` from the existing local
+   encrypted key. Never put its plaintext in a command argument, Git, or a log.
+4. Prepare a consistent migration snapshot:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m hosted.seed_state --prepare-only reports/cloud-seed
+```
+
+5. At the final handoff, disable `Courtside Predictions`, wait for its current
+   run to finish, and rerun preparation. Upload `runtime.tar.gz` and
+   `predictions.sqlite3.gz` under `gs://BUCKET/courtside/state/`. Keep the local
+   ledger as the rollback copy. Do not seed from a running or stale copy after
+   cloud collection has started.
+6. Deploy without needing any Cloudflare credentials:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File hosted/deploy.ps1 `
+  -ProjectId YOUR_PROJECT -GcsBucket YOUR_BUCKET -NoPublish
+```
+
+7. Manually invoke the IAM-protected `/run` endpoint once, verify the returned
+   model ID via the ledger, successful worker heartbeat, unchanged prior paper
+   decisions, valid quota accounting, and a newer GCS ledger generation. Keep
+   the local collector disabled once the cloud run is verified. If deployment
+   fails before cloud collection starts, resume the Windows task.
+8. Connect the Cloudflare token and account ID when ready, and redeploy without
+   `-NoPublish` to automatically update the existing `pages.dev` site.
+
+The cloud collector holds a generation-protected storage lease for each run so
+two Cloud Run revisions cannot collect simultaneously. Conditional ledger
+writes reject stale overwrites. SQLite backup includes committed WAL records.
+The five-minute scheduler only makes Odds API requests during registered game
+windows and retains the 12-credit daily and 450-credit cycle limits.
+
+One-time owner steps remain mandatory: Google account sign-in, billing setup,
+and Cloudflare authorization for automatic website publication. A prepared
+container or a public website alone does not mean the collector is deployed.
+
 This design keeps `https://courtside-nba.pages.dev` and does not require a paid
 domain. Cloudflare Pages hosts the read-only PWA, Cloudflare R2 stores the private
 compressed state, and an authenticated Google Cloud Run service is invoked by
